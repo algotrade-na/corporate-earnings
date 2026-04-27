@@ -1,9 +1,22 @@
 
 
-> [!NOTE]
-> **Project Status Update:** This extension is no longer actively maintained and may become non-functional.
->
-> **New Alternative Available:** I've created [EarningsSpike](https://earningspike.com) with enhanced features including mobile-responsive design, performance analytics, and active development. Free to try.
+> [!IMPORTANT]
+> **Corporate Earnings** is no longer actively maintained. Due to breaking changes in browser APIs and financial data structures, this extension may experience significant lag or data inaccuracies.
+
+### 🚀 Introducing EarningSpike: The Successor
+I rebuilt this tool from the ground up to solve the limitations of this extension. If you liked the "MarketSurge-style" layout of this project, you will love **EarningSpike**.
+
+* **Modern & High-Performant:** Built on a streamlined architecture for a snappier, more reliable experience.
+* **Mobile Responsive:** Track earnings and analyst moves from your phone, not just your desktop.
+* **Pro-Level UI:** Clean, distraction-free analysis designed specifically for retail traders.
+* **Active Development:** I'm constantly adding new features and ensuring data transparency.
+
+**Exclusive Offer for GitHub Users:**
+I’m offering a **20% discount** for the first year to the first 100 people moving over from this repo.
+
+**Use Code:** `GITHUB20`
+
+[Try EarningSpike Now](https://earningspike.com)
 
 ---
 
