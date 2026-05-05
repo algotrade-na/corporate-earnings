@@ -3,20 +3,26 @@
 > [!IMPORTANT]
 > **Corporate Earnings** is no longer actively maintained. Due to breaking changes in browser APIs and financial data structures, this extension may experience significant lag or data inaccuracies.
 
-### 🚀 Introducing EarningSpike: The Successor
-I rebuilt this tool from the ground up to solve the limitations of this extension. If you liked the "MarketSurge-style" layout of this project, you will love **EarningSpike**.
+## EarningSpike — the rebuild
 
-* **Modern & High-Performant:** Built on a streamlined architecture for a snappier, more reliable experience.
-* **Mobile Responsive:** Track earnings and analyst moves from your phone, not just your desktop.
-* **Pro-Level UI:** Clean, distraction-free analysis designed specifically for retail traders.
-* **Active Development:** I'm constantly adding new features and ensuring data transparency.
+I rebuilt this from scratch as a full research tool for active traders. 
+If you used this extension for earnings research, EarningSpike is built 
+for the same job — episodic pivots, breakout setups, momentum trades 
+around earnings.
 
-**Exclusive Offer for GitHub Users:**
-I’m offering a **20% discount** for the first year to the first 100 people moving over from this repo.
+What's actually different:
+- 7,000+ tickers tracked, 2 years of forward estimates
+- Insider buying/selling and institutional position changes
+- AI-summarized earnings calls (read every call in 30 seconds)
+- Screener with earnings momentum signals built in
+- Analyst revisions and price target changes
+- Earnings Calendar
 
-**Use Code:** `GITHUB20`
+Free to try, no credit card required.
 
-[Try EarningSpike Now](https://earningspike.com)
+→ [earningspike.com](https://earningspike.com?ref=github-extension)
+
+If you came from this repo, use code GITHUB20 for 20% off the first year.
 
 ---
 
