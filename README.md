@@ -22,8 +22,6 @@ Free to try, no credit card required.
 
 → [earningspike.com](https://earningspike.com?ref=github-extension)
 
-If you came from this repo, use code GITHUB20 for 20% off the first year.
-
 ---
 
 
