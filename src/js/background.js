@@ -1,5 +1,6 @@
-const SA_REGEX = /symbol\/([a-zA-Z]+)\/earnings/;
-const ZA_REGEX = /stock\/research\/([a-zA-Z]+)\/earnings-calendar/;
+const SA_REGEX = /symbol\/([a-zA-Z0-9\.\-]+)\/earnings/;
+const ZA_REGEX = /stock\/research\/([a-zA-Z0-9\.\-]+)\/earnings-calendar/;
+const YF_REGEX = /quote\/([a-zA-Z0-9\.\-]+)/;
 
 const FUNDAMENTALS_URL = "aHR0cHM6Ly9maW52aXouY29tL3F1b3RlLmFzaHg/dD0=";
 const FUNDAMENTALS_URL_PREFIX = "aHR0cHM6Ly9maW52aXouY29tLw==";
@@ -16,12 +17,17 @@ const CHART_TYPE = {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+        if (!tabs || tabs.length === 0 || !tabs[0].url) {
+            sendResponse({ error: "No active tab URL found" });
+            return;
+        }
         let url = tabs[0].url;
         const symbol = getSymbol(url);
-        if (message.command === "fetch_fundamentals")
+        if (message.command === "fetch_fundamentals") {
             fetchFundamentals(symbol, message.chart_type, sendResponse);
-        else if (message.command === "fetch_quarterly_data")
+        } else if (message.command === "fetch_quarterly_data") {
             fetchQuarterlyData(symbol, sendResponse);
+        }
     });
     return true;
 });
@@ -62,11 +68,11 @@ function fetchQuarterlyData(symbol, sendResponse) {
 function fetchFundamentals(symbol, chart_type, sendResponse) {
     if (!isDefined(symbol)) {
         sendResponse({
-            error: "No valid symbol passed to fetchQuartelyData",
+            error: "No valid symbol passed to fetchFundamentals",
         });
         return;
     }
-    let charType = CHART_TYPE.NONE;
+    let chartType = CHART_TYPE.NONE;
     if (isDefined(chart_type)) {
         chartType = parseInt(chart_type);
     }
@@ -87,20 +93,24 @@ function fetchFundamentals(symbol, chart_type, sendResponse) {
             }
 
             results.raw = response;
-            const charts = await fetchImages(symbol, chartType);
-            if (isDefined(charts)) {
-                switch (chartType) {
-                    case CHART_TYPE.WEEKLY:
-                        results.weeklyChart = charts[0];
-                        break;
-                    case CHART_TYPE.DAILY:
-                        results.dailyChart = charts[0];
-                        break;
-                    case CHART_TYPE.BOTH:
-                        results.weeklyChart = charts[0];
-                        results.dailyChart = charts[1];
-                        break;
+            try {
+                const charts = await fetchImages(symbol, chartType);
+                if (isDefined(charts)) {
+                    switch (chartType) {
+                        case CHART_TYPE.WEEKLY:
+                            results.weeklyChart = charts[0];
+                            break;
+                        case CHART_TYPE.DAILY:
+                            results.dailyChart = charts[0];
+                            break;
+                        case CHART_TYPE.BOTH:
+                            results.weeklyChart = charts[0];
+                            results.dailyChart = charts[1];
+                            break;
+                    }
                 }
+            } catch (err) {
+                console.warn("Failed to fetch chart images, returning fundamentals raw data", err);
             }
             sendResponse(results);
         })
@@ -116,11 +126,15 @@ async function fetchImages(symbol, chartType) {
     let urls = [];
     switch (chartType) {
         case CHART_TYPE.WEEKLY:
+            urls.push(decode(IMAGE_URL) + symbol + "&ty=c&ta=0&p=w&s=l");
+            break;
+        case CHART_TYPE.DAILY:
+            urls.push(decode(IMAGE_URL) + symbol + "&ty=c&ta=1&p=d&s=l");
+            break;
         case CHART_TYPE.BOTH:
             urls.push(decode(IMAGE_URL) + symbol + "&ty=c&ta=0&p=w&s=l");
-        case CHART_TYPE.DAILY:
-        case CHART_TYPE.BOTH:
             urls.push(decode(IMAGE_URL) + symbol + "&ty=c&ta=1&p=d&s=l");
+            break;
     }
     if (urls.length == 0) {
         return undefined;
@@ -136,16 +150,16 @@ async function fetchImages(symbol, chartType) {
         return data;
     } catch (error) {
         console.log(error);
-        throw error;
+        return undefined;
     }
 }
 
 function isDefined(smth) {
-    return typeof smth !== "undefined";
+    return typeof smth !== "undefined" && smth !== null;
 }
 
 function arrayBufferToBase64(buffer) {
-    if (!buffer || buffer.length == 0) {
+    if (!buffer || buffer.byteLength == 0) {
         return undefined;
     }
     let binary = "";
@@ -165,15 +179,18 @@ function decode(str) {
 }
 
 function getSymbol(url) {
-    // extract current symbol from url
+    if (!url) return undefined;
     let res = SA_REGEX.exec(url);
     if (res != null) {
-        return res[1];
-    } else {
-        res = ZA_REGEX.exec(url);
-        if (res != null) {
-            return res[1];
-        }
+        return res[1].toUpperCase();
+    }
+    res = ZA_REGEX.exec(url);
+    if (res != null) {
+        return res[1].toUpperCase();
+    }
+    res = YF_REGEX.exec(url);
+    if (res != null) {
+        return res[1].toUpperCase();
     }
     return undefined;
 }

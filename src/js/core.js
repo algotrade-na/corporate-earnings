@@ -13,115 +13,111 @@ var fundamentals = {};
 
 let overwrite_qtr_data = undefined;
 
-chrome.storage.local.get(
-    [
-        "chart_type",
-        "show_earnings_only",
-        "show_earnings_surprise",
-        "ms_style_output",
-        "limit_num_qtr",
-        "default_ds",
-        "theme",
-    ],
-    function (options) {
-        if (isDefined(options.show_earnings_only)) {
-            show_earnings_only = options.show_earnings_only;
-            fetch_fundamental_data = !options.show_earnings_only;
-        }
-        if (isDefined(options.chart_type)) chart_type = options.chart_type;
-        if (isDefined(options.show_earnings_surprise))
-            show_earnings_surprise = options.show_earnings_surprise;
-        if (isDefined(options.default_ds)) default_ds = options.default_ds;
-        if (isDefined(options.theme)) default_theme = options.theme;
-        if (isDefined(options.ms_style_output))
-            ms_style_output = options.ms_style_output;
-        if (isDefined(options.limit_num_qtr))
-            limit_num_qtr = options.limit_num_qtr;
-
-        insertCSS();
-        displayWaiting();
-
-        if (fetch_fundamental_data) {
-            chrome.runtime.sendMessage(
-                {
-                    command: "fetch_fundamentals",
-                    chart_type: chart_type,
-                },
-                (response) => {
-                    if (!response.error) {
-                        extractFundamentalData(response, fundamentals);
-                        waitForEl(
-                            "#ht-root-container",
-                            pushFundamentalsData,
-                            25
-                        );
-                    }
-                }
-            );
-        }
-
-        if (default_ds === 1) {
-            chrome.runtime.sendMessage(
-                {
-                    command: "fetch_quarterly_data",
-                },
-                (response) => {
-                    if (
-                        !response.error &&
-                        isDefined(response.raw) &&
-                        response.raw.length > 0
-                    ) {
-                        const parser = getParser(2, response.raw);
-                        overwrite_qtr_data = parser.qtrData;
-                    }
-                }
-            );
-        }
-
-        if (default_ds === 1) {
-            // SA
-            waitForEarningsData(displayEarnings, 30);
-        } else if (default_ds === 2) {
-            // ZA
-            displayEarnings(true);
-        }
-
-        // listen for option updates
-        chrome.runtime.onMessage.addListener(
-            (request, sender, sendResponse) => {
-                if (request.theme) {
-                    if (request.theme == "dark")
-                        document
-                            .getElementById("ht-root-container")
-                            .classList.add("ht-dark-theme");
-                    else
-                        document
-                            .getElementById("ht-root-container")
-                            .classList.remove("ht-dark-theme");
-                }
+if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+    chrome.storage.local.get(
+        [
+            "chart_type",
+            "show_earnings_only",
+            "show_earnings_surprise",
+            "ms_style_output",
+            "limit_num_qtr",
+            "default_ds",
+            "theme",
+        ],
+        function (options) {
+            if (!options) options = {};
+            if (isDefined(options.show_earnings_only)) {
+                show_earnings_only = options.show_earnings_only;
+                fetch_fundamental_data = !options.show_earnings_only;
             }
-        );
-    }
-);
+            if (isDefined(options.chart_type)) chart_type = options.chart_type;
+            if (isDefined(options.show_earnings_surprise))
+                show_earnings_surprise = options.show_earnings_surprise;
+            if (isDefined(options.default_ds)) default_ds = options.default_ds;
+            if (isDefined(options.theme)) default_theme = options.theme;
+            if (isDefined(options.ms_style_output))
+                ms_style_output = options.ms_style_output;
+            if (isDefined(options.limit_num_qtr))
+                limit_num_qtr = options.limit_num_qtr;
 
-/**
- * Wait for the specified element to appear in the DOM. When the element appears,
- * provide it to the callback. Wait additional 500ms where callback.
- *
- * @param selector
- * @param callback function that takes selected element (null if timeout)
- * @param maxtries number of times to try (return null after maxtries, false to disable, if 0 will still try once)
- * @param interval ms wait between each try
- */
+            insertCSS();
+            displayWaiting();
+
+            if (fetch_fundamental_data) {
+                chrome.runtime.sendMessage(
+                    {
+                        command: "fetch_fundamentals",
+                        chart_type: chart_type,
+                    },
+                    (response) => {
+                        if (response && !response.error) {
+                            extractFundamentalData(response, fundamentals);
+                            waitForEl(
+                                "#ht-root-container",
+                                pushFundamentalsData,
+                                25
+                            );
+                        }
+                    }
+                );
+            }
+
+            if (default_ds === 1) {
+                chrome.runtime.sendMessage(
+                    {
+                        command: "fetch_quarterly_data",
+                    },
+                    (response) => {
+                        if (
+                            response &&
+                            !response.error &&
+                            isDefined(response.raw) &&
+                            response.raw.length > 0
+                        ) {
+                            const parser = getParser(2, response.raw);
+                            if (parser && parser.qtrData) {
+                                overwrite_qtr_data = parser.qtrData;
+                            }
+                        }
+                    }
+                );
+            }
+
+            if (default_ds === 1) {
+                // Seeking Alpha
+                waitForEarningsData(displayEarnings, 30);
+            } else if (default_ds === 2) {
+                // Zacks
+                displayEarnings(true);
+            }
+
+            // listen for option updates
+            chrome.runtime.onMessage.addListener(
+                (request, sender, sendResponse) => {
+                    if (request && request.theme) {
+                        const root = document.getElementById("ht-root-container");
+                        if (root) {
+                            if (request.theme == "dark")
+                                root.classList.add("ht-dark-theme");
+                            else
+                                root.classList.remove("ht-dark-theme");
+                        }
+                    }
+                }
+            );
+        }
+    );
+}
+
 function waitForEarningsData(callback, maxtries = false, interval = 100) {
     const poller = setInterval(() => {
-        const isContains = contains("h2", "FQ");
+        const isContains = contains("h2", "FQ") || contains("table", "Earnings") || contains("div", "Earnings");
         const retry = maxtries === false || maxtries-- > 0;
-        if (retry && !isContains) return; // will try again
+        if (retry && !isContains) return;
         clearInterval(poller);
         setTimeout(function () {
             callback(isContains);
-        }, 1500);
+        }, 1000);
     }, interval);
 }
 
@@ -129,7 +125,7 @@ function waitForEl(el, callback, maxtries = false, interval = 200) {
     const poller = setInterval(() => {
         const isContains = document.querySelector(el);
         const retry = maxtries === false || maxtries-- > 0;
-        if (retry && !isContains) return; // will try again
+        if (retry && !isContains) return;
         clearInterval(poller);
         callback(isContains);
     }, interval);
@@ -141,95 +137,89 @@ function pushFundamentalsData(found = true) {
 
     let companyHtml = "";
     if (isDefined(fundamentals.companySite))
-        companyHtml = `<a id="ht-company-link" href="${fundamentals.companySite}" target="_blank"><b>${fundamentals.companyName}</b></a>`;
-    else companyHtml = `<b>${fundamentals.companyName}</b>`;
+        companyHtml = `<a id="ht-company-link" href="${fundamentals.companySite}" target="_blank"><b>${fundamentals.companyName || ''}</b></a>`;
+    else companyHtml = `<b>${fundamentals.companyName || ''}</b>`;
 
-    companyHtml += ` <span id="ht-ticker">(${fundamentals.ticker})</span>
-                    ${fundamentals.sector} | ${fundamentals.industry} | ${fundamentals.country}`;
+    companyHtml += ` <span id="ht-ticker">(${fundamentals.ticker || ''})</span>
+                    ${fundamentals.sector || '-'} | ${fundamentals.industry || '-'} | ${fundamentals.country || '-'}`;
 
-    document.getElementById("ht-company").innerHTML = companyHtml;
-    const priceVolume = `\$${fundamentals.price}</br><span id="ht-volume">Vol: ${fundamentals.volume}</span>`;
-    document.getElementById("ht-pricevol").innerHTML = priceVolume;
-    document.getElementById("ht-description").innerHTML =
-        fundamentals.description;
-    document.getElementById("ht-fundamentals-mktcap").innerHTML =
-        fundamentals.mktcap;
-    document.getElementById("ht-fundamentals-adr").innerHTML = fundamentals.adr;
-    const isHighlightAdr = isAdrLow(fundamentals.adr);
-    if (isHighlightAdr) {
-        document.getElementById("ht-fundamentals-adr").classList.add("ladr");
+    const compElem = document.getElementById("ht-company");
+    if (compElem) compElem.innerHTML = companyHtml;
+    
+    const priceVolElem = document.getElementById("ht-pricevol");
+    if (priceVolElem) priceVolElem.innerHTML = `\$${fundamentals.price || '-'}</br><span id="ht-volume">Vol: ${fundamentals.volume || '-'}</span>`;
+    
+    const descElem = document.getElementById("ht-description");
+    if (descElem) descElem.innerHTML = fundamentals.description || "";
+    
+    const mktElem = document.getElementById("ht-fundamentals-mktcap");
+    if (mktElem) mktElem.innerHTML = fundamentals.mktcap || "-";
+    
+    const adrElem = document.getElementById("ht-fundamentals-adr");
+    if (adrElem) {
+        adrElem.innerHTML = fundamentals.adr || "-";
+        if (isAdrLow(fundamentals.adr)) adrElem.classList.add("ladr");
     }
-    document.getElementById("ht-fundamentals-float").innerHTML =
-        fundamentals.float;
-    document.getElementById("ht-fundamentals-earnings").innerHTML =
-        fundamentals.earnings;
-    const isHighlightEarnings = isEarningsDateClose(
-        fundamentals.earnings,
-        fundamentals.daysToEarnings
-    );
-    if (isHighlightEarnings) {
-        document
-            .getElementById("ht-fundamentals-earnings")
-            .classList.add("learnings");
-    }
-    document.getElementById("ht-fundamentals-shortfloat").innerHTML =
-        fundamentals.shorts;
-    const isHighlightShorts = isShortInterestHigh(fundamentals.shorts);
-    if (isHighlightShorts) {
-        document
-            .getElementById("ht-fundamentals-shortfloat")
-            .classList.add("hshorts");
-    }
-    document.getElementById("ht-fundamentals-instown").innerHTML =
-        fundamentals.instown;
-    document.getElementById("ht-fundamentals-daystocover").innerHTML =
-        fundamentals.daystocover;
-    document.getElementById("ht-fundamentals-instrans3mo").innerHTML =
-        fundamentals.instchange;
-    const isHighlightInstChange = isHighInstitutionalOwnershipChange(
-        fundamentals.instchange
-    );
-    if (isHighlightInstChange) {
-        document
-            .getElementById("ht-fundamentals-instrans3mo")
-            .classList.add("hinstchange");
-    }
-    document.getElementById("ht-fundamentals-avgvol").innerHTML =
-        fundamentals.avgvolume;
-    document.getElementById("ht-fundamentals-relvol").innerHTML =
-        fundamentals.relvolume;
 
-    document.getElementById("ht-ratings-cell").innerHTML =
-        fundamentals.ratingsHtml;
-    document.getElementById("ht-news-cell").innerHTML = fundamentals.newsHtml;
-    document.getElementById("ht-insiders-cell").innerHTML =
-        fundamentals.insidersHtml;
+    const floatElem = document.getElementById("ht-fundamentals-float");
+    if (floatElem) floatElem.innerHTML = fundamentals.float || "-";
+
+    const earnElem = document.getElementById("ht-fundamentals-earnings");
+    if (earnElem) {
+        earnElem.innerHTML = fundamentals.earnings || "-";
+        if (isEarningsDateClose(fundamentals.earnings, fundamentals.daysToEarnings)) {
+            earnElem.classList.add("learnings");
+        }
+    }
+
+    const shortElem = document.getElementById("ht-fundamentals-shortfloat");
+    if (shortElem) {
+        shortElem.innerHTML = fundamentals.shorts || "-";
+        if (isShortInterestHigh(fundamentals.shorts)) shortElem.classList.add("hshorts");
+    }
+
+    const instElem = document.getElementById("ht-fundamentals-instown");
+    if (instElem) instElem.innerHTML = fundamentals.instown || "-";
+
+    const dtcElem = document.getElementById("ht-fundamentals-daystocover");
+    if (dtcElem) dtcElem.innerHTML = fundamentals.daystocover || "-";
+
+    const instChangeElem = document.getElementById("ht-fundamentals-instrans3mo");
+    if (instChangeElem) {
+        instChangeElem.innerHTML = fundamentals.instchange || "-";
+        if (isHighInstitutionalOwnershipChange(fundamentals.instchange)) {
+            instChangeElem.classList.add("hinstchange");
+        }
+    }
+
+    const avgVolElem = document.getElementById("ht-fundamentals-avgvol");
+    if (avgVolElem) avgVolElem.innerHTML = fundamentals.avgvolume || "-";
+
+    const relVolElem = document.getElementById("ht-fundamentals-relvol");
+    if (relVolElem) relVolElem.innerHTML = fundamentals.relvolume || "-";
+
+    const ratingsElem = document.getElementById("ht-ratings-cell");
+    if (ratingsElem) ratingsElem.innerHTML = fundamentals.ratingsHtml || "";
+
+    const newsElem = document.getElementById("ht-news-cell");
+    if (newsElem) newsElem.innerHTML = fundamentals.newsHtml || "";
+
+    const insElem = document.getElementById("ht-insiders-cell");
+    if (insElem) insElem.innerHTML = fundamentals.insidersHtml || "";
 
     if (chart_type == CHART_TYPE.WEEKLY || chart_type == CHART_TYPE.BOTH) {
-        let weekly = "";
-        if (isDefined(fundamentals.weeklyChart))
-            weekly =
-                '<img src="data:image/png;base64, ' +
-                fundamentals.weeklyChart +
-                '" alt="' +
-                fundamentals.ticker +
-                ' chart"/>';
-        else weekly = "No weekly chart available";
-
-        document.getElementById("ht-chart-weekly").innerHTML = weekly;
+        let weekly = isDefined(fundamentals.weeklyChart)
+            ? `<img src="data:image/png;base64, ${fundamentals.weeklyChart}" alt="${fundamentals.ticker} chart"/>`
+            : "No weekly chart available";
+        const wElem = document.getElementById("ht-chart-weekly");
+        if (wElem) wElem.innerHTML = weekly;
     }
     if (chart_type == CHART_TYPE.DAILY || chart_type == CHART_TYPE.BOTH) {
-        let daily = "";
-        if (isDefined(fundamentals.dailyChart))
-            daily =
-                '<img src="data:image/png;base64, ' +
-                fundamentals.dailyChart +
-                '" alt="' +
-                fundamentals.ticker +
-                ' chart"/>';
-        else daily = "No daily chart available";
-
-        document.getElementById("ht-chart-daily").innerHTML = daily;
+        let daily = isDefined(fundamentals.dailyChart)
+            ? `<img src="data:image/png;base64, ${fundamentals.dailyChart}" alt="${fundamentals.ticker} chart"/>`
+            : "No daily chart available";
+        const dElem = document.getElementById("ht-chart-daily");
+        if (dElem) dElem.innerHTML = daily;
     }
     show(document.getElementById("ht-fundamentals-container"));
 }
@@ -257,15 +247,14 @@ function displayEarnings(isContains) {
     } else {
         pushEarningsData();
     }
-    return;
 }
 
 function pushEarningsData() {
     hide(document.getElementById("ht-waiting-earnings"));
-    document.getElementById("ht-earnings-yearly").innerHTML =
-        annualToHtml(annualData);
-    document.getElementById("ht-earnings-quarterly").innerHTML =
-        quarterlyToHtml(quarterlyData);
+    const yElem = document.getElementById("ht-earnings-yearly");
+    if (yElem) yElem.innerHTML = annualToHtml(annualData);
+    const qElem = document.getElementById("ht-earnings-quarterly");
+    if (qElem) qElem.innerHTML = quarterlyToHtml(quarterlyData);
 }
 
 function displayWaiting() {
@@ -307,21 +296,19 @@ function quarterlyToHtml(quarterlyData) {
     }
     html += "</tr></thead><tbody>";
 
-    if (quarterlyData.length == 0) {
-        html +=
-            '<tr><td colspan="${show_earnings_surprise ? 7 : 5}">No data</td></tr>';
+    if (!quarterlyData || quarterlyData.length == 0) {
+        html += `<tr><td colspan="${show_earnings_surprise ? 7 : 5}">No data</td></tr>`;
         html += "</tbody></table>";
         return html;
     }
 
     quarterlyData.forEach(function (item, index) {
-        // skip all but the last 8 qtrs if option is enabled
         if (limit_num_qtr == true && index < quarterlyData.length - 8) {
             return;
         }
 
         let epsPerf = "-";
-        if (isDefined(item.eps.perf)) {
+        if (isDefined(item.eps) && isDefined(item.eps.perf)) {
             if (ms_style_output == true && item.eps.negativeCompQtr) {
                 epsPerf = "N/A";
             } else {
@@ -342,7 +329,7 @@ function quarterlyToHtml(quarterlyData) {
             }
         }
         let surpriseEpsPerf = "-";
-        if (isDefined(item.eps.surprisePerf)) {
+        if (isDefined(item.eps) && isDefined(item.eps.surprisePerf)) {
             surpriseEpsPerf = item.eps.surprisePerf;
             if (item.eps.surprisePerf > 0) {
                 surpriseEpsPerf = "+" + surpriseEpsPerf;
@@ -352,7 +339,7 @@ function quarterlyToHtml(quarterlyData) {
             }
         }
         let revPerf = "-";
-        if (isDefined(item.rev.perf)) {
+        if (isDefined(item.rev) && isDefined(item.rev.perf)) {
             if (ms_style_output == true && item.rev.perf >= 1000) {
                 revPerf = "999";
             } else {
@@ -366,7 +353,7 @@ function quarterlyToHtml(quarterlyData) {
             }
         }
         let surpriseRevPerf = "-";
-        if (isDefined(item.rev.surprisePerf)) {
+        if (isDefined(item.rev) && isDefined(item.rev.surprisePerf)) {
             surpriseRevPerf = item.rev.surprisePerf;
             if (item.rev.surprisePerf > 0) {
                 surpriseRevPerf = "+" + surpriseRevPerf;
@@ -376,46 +363,17 @@ function quarterlyToHtml(quarterlyData) {
             }
         }
         html += "<tr>";
-        html += "<td>" + item.date + "</td>";
-        html +=
-            '<td style="white-space: nowrap;">' +
-            getDisplayQuarter(item.name) +
-            "</td>";
-        html += "<td>" + item.eps.eps + "</td>";
-        html +=
-            '<td class="' +
-            getHighlightClass4Change(item.eps.perf, epsPerf) +
-            '">' +
-            epsPerf +
-            "</td>";
+        html += "<td>" + (item.date || '-') + "</td>";
+        html += '<td style="white-space: nowrap;">' + getDisplayQuarter(item.name) + "</td>";
+        html += "<td>" + (item.eps && isDefined(item.eps.eps) ? item.eps.eps : '-') + "</td>";
+        html += '<td class="' + getHighlightClass4Change(item.eps ? item.eps.perf : undefined, epsPerf) + '">' + epsPerf + "</td>";
         if (show_earnings_surprise) {
-            html +=
-                '<td class="' +
-                getHighlightClass4Surprise(
-                    item.eps.surprisePerf,
-                    surpriseEpsPerf
-                ) +
-                '">' +
-                surpriseEpsPerf +
-                "</td>";
+            html += '<td class="' + getHighlightClass4Surprise(item.eps ? item.eps.surprisePerf : undefined, surpriseEpsPerf) + '">' + surpriseEpsPerf + "</td>";
         }
-        html += "<td>" + numberWithCommas(item.rev.rev) + "</td>";
-        html +=
-            '<td class="' +
-            getHighlightClass4Change(item.rev.perf, revPerf) +
-            '">' +
-            revPerf +
-            "</td>";
+        html += "<td>" + (item.rev && isDefined(item.rev.rev) ? numberWithCommas(item.rev.rev) : '-') + "</td>";
+        html += '<td class="' + getHighlightClass4Change(item.rev ? item.rev.perf : undefined, revPerf) + '">' + revPerf + "</td>";
         if (show_earnings_surprise) {
-            html +=
-                '<td class="' +
-                getHighlightClass4Surprise(
-                    item.rev.surprisePerf,
-                    surpriseRevPerf
-                ) +
-                '">' +
-                surpriseRevPerf +
-                "</td>";
+            html += '<td class="' + getHighlightClass4Surprise(item.rev ? item.rev.surprisePerf : undefined, surpriseRevPerf) + '">' + surpriseRevPerf + "</td>";
         }
         html += "</tr>";
     });
@@ -425,101 +383,64 @@ function quarterlyToHtml(quarterlyData) {
 
 function annualToHtml(annualData) {
     let html = '<table class="ht-earnings-table">';
-    html +=
-        "<thead><tr><td>Year</td><td>EPS</td><td>%Change</td><td>Revenue(Mil)</td><td>%Change</td></tr></thead><tbody>";
+    html += "<thead><tr><td>Year</td><td>EPS</td><td>%Change</td><td>Revenue(Mil)</td><td>%Change</td></tr></thead><tbody>";
 
-    if (annualData.length == 0) {
+    if (!annualData || annualData.length == 0) {
         html += '<tr><td colspan="5">No data</td></tr>';
         html += "</tbody></table>";
         return html;
     }
 
     annualData.forEach(function (item, index) {
-        let yearlyEps = "-";
-        if (typeof item.eps !== "undefined") {
-            yearlyEps = item.eps.toString();
-        }
-        let yearlyRev = "-";
-        if (typeof item.rev !== "undefined") {
-            yearlyRev = item.rev.toString();
-        }
+        let yearlyEps = isDefined(item.eps) ? item.eps.toString() : "-";
+        let yearlyRev = isDefined(item.rev) ? item.rev.toString() : "-";
         let epsPerf = "-";
         if (isDefined(item.epsPerf)) {
             epsPerf = item.epsPerf > 0 ? "+" + item.epsPerf : item.epsPerf;
-            if (ms_style_output == true) {
-                epsPerf = epsPerf + "%";
-            }
+            if (ms_style_output == true) epsPerf = epsPerf + "%";
         }
         let revPerf = "-";
         if (isDefined(item.revPerf)) {
             revPerf = item.revPerf > 0 ? "+" + item.revPerf : item.revPerf;
-            if (ms_style_output == true) {
-                revPerf = revPerf + "%";
-            }
+            if (ms_style_output == true) revPerf = revPerf + "%";
         }
 
-        if (item.name.toString().startsWith("*")) {
-            html += '<tr><td title="Estimated">' + item.name + "</td>";
-            html += '<td title="Estimated">' + yearlyEps + "</td>";
-            html +=
-                '<td title="Estimated" class="' +
-                getHighlightClass4Change(item.epsPerf, epsPerf) +
-                '">' +
-                epsPerf +
-                "</td>";
-            html +=
-                '<td title="Estimated">' +
-                numberWithCommas(yearlyRev) +
-                "</td>";
-            html +=
-                '<td title="Estimated" class="' +
-                getHighlightClass4Change(item.revPerf, revPerf) +
-                '">' +
-                revPerf +
-                "</td></tr>";
-        } else {
-            html += "<tr><td>" + item.name + "</td>";
-            html += "<td>" + yearlyEps + "</td>";
-            html +=
-                '<td class="' +
-                getHighlightClass4Change(item.epsPerf, epsPerf) +
-                '">' +
-                epsPerf +
-                "</td>";
-            html += "<td>" + numberWithCommas(yearlyRev) + "</td>";
-            html +=
-                '<td class="' +
-                getHighlightClass4Change(item.revPerf, revPerf) +
-                '">' +
-                revPerf +
-                "</td></tr>";
-        }
+        let isEst = item.name && item.name.toString().startsWith("*");
+        html += `<tr><td ${isEst ? 'title="Estimated"' : ''}>${item.name || '-'}</td>`;
+        html += `<td ${isEst ? 'title="Estimated"' : ''}>${yearlyEps}</td>`;
+        html += `<td ${isEst ? 'title="Estimated"' : ''} class="${getHighlightClass4Change(item.epsPerf, epsPerf)}">${epsPerf}</td>`;
+        html += `<td ${isEst ? 'title="Estimated"' : ''}>${numberWithCommas(yearlyRev)}</td>`;
+        html += `<td ${isEst ? 'title="Estimated"' : ''} class="${getHighlightClass4Change(item.revPerf, revPerf)}">${revPerf}</td></tr>`;
     });
     html += "</tbody></table>";
     return html;
 }
 
-// attemps to extract earnings quarterly and annual data from html
-// if successful, will parse and calculate Change%
 function extractAndProcessEarningsData() {
-    const parser = getParser(default_ds);
-    if (isDefined(parser.qtrData)) quarterlyData = parser.qtrData;
-    if (isDefined(parser.annualData)) annualData = parser.annualData;
-    if (isDefined(overwrite_qtr_data)) quarterlyData = overwrite_qtr_data;
+    try {
+        const parser = getParser(default_ds);
+        if (parser) {
+            if (isDefined(parser.qtrData)) quarterlyData = parser.qtrData;
+            if (isDefined(parser.annualData)) annualData = parser.annualData;
+        }
+        if (isDefined(overwrite_qtr_data)) quarterlyData = overwrite_qtr_data;
 
-    calculateQuarterlyPerf(quarterlyData);
-    fillAnnual(quarterlyData, annualData);
-    calculateAnnualPerf(annualData);
+        calculateQuarterlyPerf(quarterlyData);
+        fillAnnual(quarterlyData, annualData);
+        calculateAnnualPerf(annualData);
+    } catch (err) {
+        console.warn("extractAndProcessEarningsData error", err);
+    }
 }
 
-// Calculations
-// calculates quarterly performance (%Chg) based on comparative quarter
 function calculateQuarterlyPerf(qrts) {
-    qrts.map(function (qtr, index) {
+    if (!qrts || !Array.isArray(qrts)) return;
+    qrts.map(function (qtr) {
+        if (!qtr || !qtr.eps || !qtr.rev) return;
         let compQuarter = qrts.find(
-            (q) => q.name == getComparativeQuarterName(qtr)
+            (q) => q && q.name == getComparativeQuarterName(qtr)
         );
-        if (isDefined(compQuarter)) {
+        if (isDefined(compQuarter) && compQuarter.eps) {
             if (compQuarter.eps.eps != 0) {
                 qtr.eps.negativeCompQtr = false;
                 qtr.eps.negativeTurnaround = false;
@@ -543,31 +464,26 @@ function calculateQuarterlyPerf(qrts) {
     });
 }
 
-// Fill eps/revenue for previous years using existing quaterly data
-// getLatestYear to get year for latest quarter available (e.g. 2020)
-// attempt to find all quarters for given year
-// when found 0 quarters, exit
 function fillAnnual(quarterlyData, annualData) {
-    if (quarterlyData.length == 0) {
+    if (!quarterlyData || quarterlyData.length == 0 || !annualData) {
         return;
     }
     let year = getLatestQtrYear(quarterlyData);
-    while (true) {
+    if (!year) return;
+    let maxLoops = 20;
+    while (maxLoops-- > 0) {
         let yearItem = new Year(year, year, 0, 0);
         let qtrs4Year = 0;
 
-        // find all quarters for given year
         quarterlyData.forEach(function (qtr) {
-            if (qtr.name.indexOf(year.toString()) > -1) {
-                if (isDefined(qtr.eps.eps)) yearItem.eps += qtr.eps.eps;
-                if (isDefined(qtr.rev.rev)) yearItem.rev += qtr.rev.rev;
+            if (qtr && qtr.name && qtr.name.indexOf(year.toString()) > -1) {
+                if (qtr.eps && isDefined(qtr.eps.eps)) yearItem.eps += qtr.eps.eps;
+                if (qtr.rev && isDefined(qtr.rev.rev)) yearItem.rev += qtr.rev.rev;
                 ++qtrs4Year;
             }
         });
 
-        if (qtrs4Year == 0) {
-            break;
-        }
+        if (qtrs4Year == 0) break;
 
         if (qtrs4Year == 4) {
             yearItem.eps = +yearItem.eps.toFixed(2);
@@ -579,11 +495,11 @@ function fillAnnual(quarterlyData, annualData) {
     }
 }
 
-// Calculates annual performance (%Chg) for each year by comparing with previous year
 function calculateAnnualPerf(years) {
-    years.map(function (item, index) {
-        const previousYear = years.find((q) => q.year == item.year - 1);
-        // check if previous year available. present year and previous have 4 qtrs.
+    if (!years || !Array.isArray(years)) return;
+    years.map(function (item) {
+        if (!item) return;
+        const previousYear = years.find((q) => q && q.year == item.year - 1);
         if (
             isDefined(previousYear) &&
             item.qtrs4Year == 4 &&
@@ -596,100 +512,100 @@ function calculateAnnualPerf(years) {
 }
 
 function extractFundamentalData(response, results) {
+    if (!response || !response.raw) return results;
     results.dailyChart = response.dailyChart;
     results.weeklyChart = response.weeklyChart;
 
-    const parser = new DOMParser();
-    const dom = parser.parseFromString(response.raw, "text/html");
-    const tickerNode = dom.querySelector(".quote-header_ticker-wrapper > h1");
-    results.ticker = tickerNode.textContent;
-    const anchorNode = dom.querySelector(".quote-header_ticker-wrapper > h2 > a");
-    results.companyName = anchorNode.textContent.trim();
-    results.companySite = fixExternalLink(anchorNode.getAttribute("href"));
+    try {
+        const parser = new DOMParser();
+        const dom = parser.parseFromString(response.raw, "text/html");
+        
+        const tickerNode = dom.querySelector(".quote-header_ticker-wrapper > h1") || dom.querySelector("h1.quote-header_ticker") || dom.querySelector("h1");
+        results.ticker = tickerNode ? tickerNode.textContent.trim() : "";
+        
+        const anchorNode = dom.querySelector(".quote-header_ticker-wrapper > h2 > a") || dom.querySelector("h2 > a");
+        results.companyName = anchorNode ? anchorNode.textContent.trim() : "";
+        results.companySite = anchorNode ? fixExternalLink(anchorNode.getAttribute("href") || "") : "";
 
+        const sectorNode = dom.querySelector(".quote-links a:first-child");
+        results.sector = sectorNode ? sectorNode.textContent.trim() : "";
+        results.sectorHref = sectorNode ? fixExternalLink(sectorNode.getAttribute("href") || "") : "";
 
-    const sectorNode = dom.querySelector(".quote-links a:first-child");
-    results.sector = sectorNode.textContent;
-    results.sectorHref = fixExternalLink(sectorNode.getAttribute("href"));
+        const industryNode = dom.querySelector(".quote-links a:nth-of-type(2)");
+        results.industry = industryNode ? industryNode.textContent.trim() : "";
+        results.industryHref = industryNode ? fixExternalLink(industryNode.getAttribute("href") || "") : "";
 
-    const industryNode = dom.querySelector(".quote-links a:nth-of-type(2)");
-    results.industry = industryNode.textContent;
-    results.industryHref = fixExternalLink(industryNode.getAttribute("href"));
+        const countryNode = dom.querySelector(".quote-links a:nth-of-type(3)");
+        results.country = countryNode ? countryNode.textContent.trim() : "";
+        results.countryHref = countryNode ? fixExternalLink(countryNode.getAttribute("href") || "") : "";
 
-    const countryNode = dom.querySelector(".quote-links a:nth-of-type(3)");
-    results.country = countryNode.textContent;
-    results.countryHref = fixExternalLink(countryNode.getAttribute("href"));
+        const tds = Array.from(dom.querySelectorAll("td"));
+        results.shorts = getSiblingText(tds, "Short Float");
+        results.daystocover = getSiblingText(tds, "Short Ratio");
+        results.float = getSiblingText(tds, "Shs Float");
+        processEarnings(getSiblingText(tds, "Earnings"), results);
+        results.mktcap = getSiblingText(tds, "Market Cap");
+        
+        let volStr = getSiblingText(tds, "Volatility");
+        results.adr = (volStr && volStr.includes(" ")) ? volStr.split(" ")[1] : volStr;
+        
+        results.instown = getSiblingText(tds, "Inst Own");
+        results.instchange = getSiblingText(tds, "Inst Trans");
+        results.relvolume = getSiblingText(tds, "Rel Volume");
+        results.avgvolume = getSiblingText(tds, "Avg Volume");
+        results.price = getSiblingText(tds, "Price");
+        results.volume = getSiblingText(tds, "Volume");
 
+        const profileNode = dom.querySelector(".fullview-profile");
+        results.description = profileNode ? profileNode.textContent.trim() : "";
+        if (isDefined(results.companyName) && results.companyName !== "" && results.description) {
+            const regex = new RegExp(
+                "^" +
+                    results.companyName +
+                    ",? (together with its subsidiaries, )?(through its subsidiaries, )?"
+            );
+            results.description = results.description.replace(regex, "");
+        }
 
-    const tds = Array.from(dom.querySelectorAll("td"));
-    results.shorts = getSiblingText(tds, "Short Float");
-    results.daystocover = getSiblingText(tds, "Short Ratio");
-    results.float = getSiblingText(tds, "Shs Float");
-    processEarnings(getSiblingText(tds, "Earnings"), results);
-    results.mktcap = getSiblingText(tds, "Market Cap");
-    results.adr = getSiblingText(tds, "Volatility").split(" ")[1];
-    results.instown = getSiblingText(tds, "Inst Own");
-    results.instchange = getSiblingText(tds, "Inst Trans");
-    results.relvolume = getSiblingText(tds, "Rel Volume");
-    results.avgvolume = getSiblingText(tds, "Avg Volume");
-    results.price = getSiblingText(tds, "Price");
-    results.volume = getSiblingText(tds, "Volume");
+        results.ratingsHtml = "";
 
-    results.description = dom.querySelector(".fullview-profile").textContent;
-    if (isDefined(results.companyName)) {
-        const regex = new RegExp(
-            "^" +
-                results.companyName +
-                ",? (together with its subsidiaries, )?(through its subsidiaries, )?"
-        );
-        results.description = results.description.replace(regex, "");
-    }
-    
-/*
-    if (dom.querySelector(".fullview-ratings-outer") != null) {
-        results.ratingsJson = extractRatings(
-            dom.querySelector(".fullview-ratings-outer").outerHTML
-        );
-        results.ratingsHtml = renderRatings(results.ratingsJson);
-    } else {
-        results.ratingsHtml = "No ratings";
-    }
+        const newsOuter = dom.querySelector(".fullview-news-outer");
+        if (newsOuter != null) {
+            results.newsJson = extractNews(newsOuter.outerHTML);
+            results.newsHtml = renderNews(results.newsJson);
+        } else {
+            results.newsHtml = "No news";
+        }
 
-*/
-
-    results.ratingsHtml = "";
-
-    if (dom.querySelector(".fullview-news-outer") != null) {
-        results.newsJson = extractNews(
-            dom.querySelector(".fullview-news-outer").outerHTML
-        );
-        results.newsHtml = renderNews(results.newsJson);
-    } else {
-        results.newsHtml = "No news";
-    }
-
-    const insidersNode = dom.querySelector(".body-table");
-    if (insidersNode != null) {
-        const insidersJson = extractInsiders(insidersNode.outerHTML);
-        results.insidersHtml =
-            insidersJson.length > 0
-                ? renderInsiders(insidersJson)
-                : "No insider transactions";
+        const insidersNode = dom.querySelector(".body-table");
+        if (insidersNode != null) {
+            const insidersJson = extractInsiders(insidersNode.outerHTML);
+            results.insidersHtml =
+                insidersJson.length > 0
+                    ? renderInsiders(insidersJson)
+                    : "No insider transactions";
+        }
+    } catch (err) {
+        console.warn("extractFundamentalData error", err);
     }
     return results;
 }
 
 function processEarnings(str, results) {
+    if (!str || typeof str !== "string" || str === "-") {
+        results.earnings = "-";
+        return;
+    }
     results.earnings = str;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
     const parts = str.split(" ");
-    if (parts.length < 2) {
-        return undefined;
+    if (parts.length < 2 || !REVERSE_MONTH_MAP[parts[0]]) {
+        return;
     }
     const earningsMonth = REVERSE_MONTH_MAP[parts[0]];
-    const earningsDate = new Date(today.getFullYear(), earningsMonth, parts[1]);
+    const earningsDate = new Date(today.getFullYear(), earningsMonth, parseInt(parts[1]) || 1);
     earningsDate.setHours(0, 0, 0, 0);
 
     if (earningsDate.getTime() + 24 * 60 * 60 * 1000 < today.getTime()) {
@@ -697,10 +613,9 @@ function processEarnings(str, results) {
         return;
     }
 
-    // if earnings month is 9,10,11 and today's months is 0,1,2 set earnings date to previous year
     if (
         (earningsMonth == 9 || earningsMonth == 10 || earningsMonth == 11) &&
-        (today.getMonth() == 0 || today.getMonth == 1 || today.getMonth == 2)
+        (today.getMonth() == 0 || today.getMonth() == 1 || today.getMonth() == 2)
     ) {
         earningsDate.setFullYear(today.getFullYear() - 1);
     }
@@ -713,97 +628,55 @@ function processEarnings(str, results) {
     }
 }
 
-// extractors extract data from client html into json
 const extractInsiders = (html) => {
     let insiders = [];
-    const parser = new DOMParser();
-    const dom = parser.parseFromString(html, "text/html");
-    const rows = dom.querySelectorAll("tr");
-    for (let [index, row] of rows.entries()) {
-        if (index == 0) continue;
-        let result = {};
-        if (row.className.includes("is-sale")) result.isSell = 1;
-        else if (row.className.includes("is-buy")) result.isBuy = 1;
-        let cells = row.querySelectorAll("td");
-        result.insider = cells[0].querySelector("a").innerHTML;
-        result.relationship = cells[1].innerHTML;
-        result.date = cells[2].innerHTML;
-        result.transaction = cells[3].innerHTML;
-        result.cost = cells[4].innerHTML;
-        result.shares = cells[5].innerHTML;
-        result.value = cells[6].innerHTML;
-        result.sharesTotal = cells[7].innerHTML;
-        result.linkHref = cells[8].querySelector("a").getAttribute("href");
-        result.linkText = cells[8].querySelector("a").innerHTML;
-        insiders.push(result);
+    try {
+        const parser = new DOMParser();
+        const dom = parser.parseFromString(html, "text/html");
+        const rows = dom.querySelectorAll("tr");
+        for (let [index, row] of rows.entries()) {
+            if (index == 0) continue;
+            let result = {};
+            if (row.className && row.className.includes("is-sale")) result.isSell = 1;
+            else if (row.className && row.className.includes("is-buy")) result.isBuy = 1;
+            let cells = row.querySelectorAll("td");
+            if (cells.length < 8) continue;
+            let a0 = cells[0].querySelector("a");
+            result.insider = a0 ? a0.innerHTML : cells[0].innerHTML;
+            result.relationship = cells[1].innerHTML;
+            result.date = cells[2].innerHTML;
+            result.transaction = cells[3].innerHTML;
+            result.cost = cells[4].innerHTML;
+            result.shares = cells[5].innerHTML;
+            result.value = cells[6].innerHTML;
+            result.sharesTotal = cells[7].innerHTML;
+            let a8 = cells[8] ? cells[8].querySelector("a") : null;
+            result.linkHref = a8 ? a8.getAttribute("href") : "#";
+            result.linkText = a8 ? a8.innerHTML : "link";
+            insiders.push(result);
+        }
+    } catch (e) {
+        console.warn("extractInsiders error", e);
     }
     return insiders;
 };
 
 const renderInsiders = (json) => {
     let html = '<table id="ht-insiders-table">\n';
+    if (!json || !Array.isArray(json)) return html + "</table>\n";
     for (const item of json) {
         html += "<tr>\n";
-        html += '<td class="ht-insiders-date">' + item.date + "</td>\n";
+        html += '<td class="ht-insiders-date">' + (item.date || '') + "</td>\n";
         html += "<td";
         if (item.isSell) html += ' class="ht-insiders-sell"';
         else if (item.isBuy) html += ' class="ht-insiders-buy"';
-        html += ">" + item.transaction + "</td>\n";
-        html += "<td>$" + item.value + " (" + item.shares + " shs)</td>\n";
-        html += "<td>" + item.insider + " (" + item.relationship + ")</td>\n";
+        html += ">" + (item.transaction || '') + "</td>\n";
+        html += "<td>$" + (item.value || '0') + " (" + (item.shares || '0') + " shs)</td>\n";
+        html += "<td>" + (item.insider || '') + " (" + (item.relationship || '') + ")</td>\n";
         html +=
             '<td><a class="ht-insiders-link" href="' +
-            item.linkHref +
+            (item.linkHref || '#') +
             '" target="_blank">f4</a></td>\n';
-        html += "</tr>\n";
-    }
-    html += "</table>\n";
-    return html;
-};
-
-const extractRatings = (html) => {
-    let ratings = [];
-    html = html.replace(/<\/?b>/g, "");
-    const parser = new DOMParser();
-    const dom = parser.parseFromString(html, "text/html");
-    const ratingsNodes = dom.querySelectorAll("table table");
-
-    for (const ratingsNode of ratingsNodes) {
-        let result = {};
-        let ratingsRow = ratingsNode.querySelector("tr");
-        let rowClass = ratingsRow.getAttribute("class");
-        switch (rowClass.trim()) {
-            case "body-table-rating-downgrade":
-                result.downgrade = 1;
-                break;
-            case "body-table-rating-upgrade":
-                result.upgrade = 1;
-                break;
-        }
-
-        let cells = ratingsNode.querySelectorAll("td");
-        result.date = cells[0].innerHTML;
-        result.action = cells[1].innerHTML;
-        result.analyst = cells[2].innerHTML;
-        result.rating = cells[3].innerHTML;
-        result.price = cells[4].innerHTML;
-        ratings.push(result);
-    }
-    return ratings;
-};
-
-const renderRatings = (json) => {
-    let html = '<table id="ht-ratings-table">\n';
-    for (const item of json) {
-        html += "<tr";
-        if (item.upgrade) html += ' class="ht-ratings-upgrade"';
-        else if (item.downgrade) html += ' class="ht-ratings-downgrade"';
-        html += ">\n";
-        html += '<td class="ht-ratings-date">' + item.date + "</td>\n";
-        html += "<td>" + item.action + "</td>\n";
-        html += "<td>" + item.analyst + "</td>\n";
-        html += "<td>" + item.rating + "</td>\n";
-        html += '<td class="ht-ratings-price">' + item.price + "</td>\n";
         html += "</tr>\n";
     }
     html += "</table>\n";
@@ -812,41 +685,47 @@ const renderRatings = (json) => {
 
 const extractNews = (html) => {
     let news = [];
-    const parser = new DOMParser();
-    const dom = parser.parseFromString(html, "text/html");
-    const newsTableNode = dom.querySelector("table");
-    let newsRowsNodes = newsTableNode.querySelectorAll("tr");
+    try {
+        const parser = new DOMParser();
+        const dom = parser.parseFromString(html, "text/html");
+        const newsTableNode = dom.querySelector("table");
+        if (!newsTableNode) return news;
+        let newsRowsNodes = newsTableNode.querySelectorAll("tr");
 
-    for (const newsRowNode of newsRowsNodes) {
-        let result = {};
-        let cells = newsRowNode.querySelectorAll("td");
-        for (let cellNode of cells) {
-            let linkNode = cellNode.querySelector("a");
-            if (linkNode != null) {
-                result.linkHref = linkNode.getAttribute("href");
-                result.linkText = linkNode.innerHTML;
-                let spanNode = cellNode.querySelector("span");
-                if (spanNode != null) result.source = spanNode.innerHTML.trim();
-            } else
-                result.date = cellNode.innerHTML.trim().replace(/\&nbsp;/g, "");
+        for (const newsRowNode of newsRowsNodes) {
+            let result = {};
+            let cells = newsRowNode.querySelectorAll("td");
+            for (let cellNode of cells) {
+                let linkNode = cellNode.querySelector("a");
+                if (linkNode != null) {
+                    result.linkHref = linkNode.getAttribute("href");
+                    result.linkText = linkNode.innerHTML;
+                    let spanNode = cellNode.querySelector("span");
+                    if (spanNode != null) result.source = spanNode.innerHTML.trim();
+                } else
+                    result.date = cellNode.innerHTML.trim().replace(/\&nbsp;/g, "");
+            }
+            news.push(result);
         }
-        news.push(result);
+    } catch (e) {
+        console.warn("extractNews error", e);
     }
     return news;
 };
 
 const renderNews = (json) => {
     let html = '<table id="ht-news-table">\n';
+    if (!json || !Array.isArray(json)) return html + "</table>\n";
     for (const item of json) {
         html += "<tr>\n";
-        html += '<td class="ht-news-date-cell">' + item.date + "</td>\n";
+        html += '<td class="ht-news-date-cell">' + (item.date || '') + "</td>\n";
         html +=
             '<td class="ht-news-link-cell"><a class="ht-news-link" href="' +
-            item.linkHref +
+            (item.linkHref || '#') +
             '" target="_blank">' +
-            item.linkText +
+            (item.linkText || '') +
             '</a><span class="ht-news-source">' +
-            item.source +
+            (item.source || '') +
             "</span></td>\n";
         html += "</tr>\n";
     }
