@@ -445,20 +445,44 @@ class ZAParser extends Parser {
                 ? parser.parseFromString(html, "text/html")
                 : document;
             
-            const tabsElem = dom.querySelector("#earnings_announcements_tabs");
-            if (!tabsElem || !tabsElem.nextElementSibling) {
+            let jsonStr = "";
+            const rawText = isDefined(html) ? html : (dom.documentElement ? dom.documentElement.innerHTML : "");
+            
+            // Extract document.obj_data = { ... }; cleanly using regex
+            const objDataMatch = rawText.match(/document\.obj_data\s*=\s*(\{[\s\S]*?\});\s*(?:document|\n|\$|<\/script>)/);
+            if (objDataMatch) {
+                jsonStr = objDataMatch[1];
+            } else {
+                // Fallback: brace balance near #earnings_announcements_tabs
+                const tabsElem = dom.querySelector("#earnings_announcements_tabs");
+                if (tabsElem && tabsElem.nextElementSibling) {
+                    let scriptText = tabsElem.nextElementSibling.innerHTML.trim();
+                    let start = scriptText.indexOf("{");
+                    if (start !== -1) {
+                        let braceCount = 0;
+                        let end = -1;
+                        for (let i = start; i < scriptText.length; i++) {
+                            if (scriptText[i] === '{') braceCount++;
+                            else if (scriptText[i] === '}') {
+                                braceCount--;
+                                if (braceCount === 0) {
+                                    end = i;
+                                    break;
+                                }
+                            }
+                        }
+                        if (end !== -1) {
+                            jsonStr = scriptText.substring(start, end + 1);
+                        }
+                    }
+                }
+            }
+
+            if (!jsonStr) {
                 return [quarterlyData, undefined];
             }
-            
-            let jsonBlock = tabsElem.nextElementSibling.innerHTML.trim();
-            let jsonStart = jsonBlock.indexOf("{");
-            let jsonEnd = jsonBlock.lastIndexOf("}");
-            if (jsonStart === -1 || jsonEnd === -1) {
-                return [quarterlyData, undefined];
-            }
-            
-            let json = jsonBlock.substring(jsonStart, jsonEnd + 1);
-            let dataObj = JSON.parse(json);
+
+            let dataObj = JSON.parse(jsonStr);
             if (dataObj && dataObj.earnings_announcements_earnings_table) {
                 dataObj.earnings_announcements_earnings_table.forEach((item) => {
                     if (!item || item.length < 4) return;
