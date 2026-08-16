@@ -17,10 +17,12 @@ function collectChildText(elem) {
     if (!elem || !elem.children) return rows;
     Array.from(elem.children).forEach((child) => {
         let cells = [];
-        if (child.children) {
+        if (child.children && child.children.length > 0) {
             Array.from(child.children).forEach((subChild) => {
                 cells.push(subChild.textContent ? subChild.textContent.trim() : "");
             });
+        } else if (child.textContent) {
+            cells.push(child.textContent.trim());
         }
         if (cells.length > 0 && cells[0] !== "") {
             rows.push(cells);
@@ -362,14 +364,18 @@ class SAParser extends Parser {
             let dom = isDefined(html)
                 ? parser.parseFromString(html, "text/html")
                 : document;
-            let dataBlockCount = 1;
+            
             const monthYearRegex = /^[A-Za-z]{3} \d{4}/;
-            const blocks = dom.querySelectorAll('[data-test-id="table-body"]');
+            let blocks = dom.querySelectorAll('[data-test-id="table-body"], [data-test-id*="table"], tbody, [role="rowgroup"], div[class*="table"]');
+            
+            let dataBlockCount = 1;
             blocks.forEach((block) => {
-                if (block.textContent && block.textContent.startsWith('FY')) {
+                if (block.textContent && (block.textContent.startsWith('FY') || block.textContent.includes('Fiscal Year'))) {
                     return; 
                 }
                 let rows = collectChildText(block);
+                if (!rows || rows.length === 0) return;
+
                 switch (dataBlockCount) {
                     case 1:
                         for (const row of rows) {
@@ -448,12 +454,10 @@ class ZAParser extends Parser {
             let jsonStr = "";
             const rawText = isDefined(html) ? html : (dom.documentElement ? dom.documentElement.innerHTML : "");
             
-            // Extract document.obj_data = { ... }; cleanly using regex
             const objDataMatch = rawText.match(/document\.obj_data\s*=\s*(\{[\s\S]*?\});\s*(?:document|\n|\$|<\/script>)/);
             if (objDataMatch) {
                 jsonStr = objDataMatch[1];
             } else {
-                // Fallback: brace balance near #earnings_announcements_tabs
                 const tabsElem = dom.querySelector("#earnings_announcements_tabs");
                 if (tabsElem && tabsElem.nextElementSibling) {
                     let scriptText = tabsElem.nextElementSibling.innerHTML.trim();
