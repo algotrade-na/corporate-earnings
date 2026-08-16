@@ -140,7 +140,7 @@ function pushFundamentalsData(found = true) {
         companyHtml = `<a id="ht-company-link" href="${fundamentals.companySite}" target="_blank"><b>${fundamentals.companyName || ''}</b></a>`;
     else companyHtml = `<b>${fundamentals.companyName || ''}</b>`;
 
-    companyHtml += ` <span id="ht-ticker">(${fundamentals.ticker || ''})</span>
+    companyHtml += ` <span id="ht-ticker">(${fundamentals.ticker || ''})</span> - 
                     ${fundamentals.sector || '-'} | ${fundamentals.industry || '-'} | ${fundamentals.country || '-'}`;
 
     const compElem = document.getElementById("ht-company");
@@ -520,22 +520,25 @@ function extractFundamentalData(response, results) {
         const parser = new DOMParser();
         const dom = parser.parseFromString(response.raw, "text/html");
         
-        const tickerNode = dom.querySelector(".quote-header_ticker-wrapper > h1") || dom.querySelector("h1.quote-header_ticker") || dom.querySelector("h1");
+        const tickerNode = dom.querySelector(".quote-header_ticker-wrapper_ticker, .quote-header_ticker-wrapper > h1, h1.quote-header_ticker, h1");
         results.ticker = tickerNode ? tickerNode.textContent.trim() : "";
         
         const anchorNode = dom.querySelector(".quote-header_ticker-wrapper > h2 > a") || dom.querySelector("h2 > a");
         results.companyName = anchorNode ? anchorNode.textContent.trim() : "";
         results.companySite = anchorNode ? fixExternalLink(anchorNode.getAttribute("href") || "") : "";
 
-        const sectorNode = dom.querySelector(".quote-links a:first-child");
+        // Query both new Finviz class a.quote-header_category and legacy .quote-links a
+        const categoryNodes = Array.from(dom.querySelectorAll("a.quote-header_category, .quote-links a, a[href*='screener?v=111']"));
+        const sectorNode = categoryNodes.find(a => (a.getAttribute("href") || "").includes("f=sec_")) || categoryNodes[0];
+        const industryNode = categoryNodes.find(a => (a.getAttribute("href") || "").includes("f=ind_")) || categoryNodes[1];
+        const countryNode = categoryNodes.find(a => (a.getAttribute("href") || "").includes("geo_")) || categoryNodes[2];
+
         results.sector = sectorNode ? sectorNode.textContent.trim() : "";
         results.sectorHref = sectorNode ? fixExternalLink(sectorNode.getAttribute("href") || "") : "";
 
-        const industryNode = dom.querySelector(".quote-links a:nth-of-type(2)");
         results.industry = industryNode ? industryNode.textContent.trim() : "";
         results.industryHref = industryNode ? fixExternalLink(industryNode.getAttribute("href") || "") : "";
 
-        const countryNode = dom.querySelector(".quote-links a:nth-of-type(3)");
         results.country = countryNode ? countryNode.textContent.trim() : "";
         results.countryHref = countryNode ? fixExternalLink(countryNode.getAttribute("href") || "") : "";
 
