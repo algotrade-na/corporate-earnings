@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "Corporate Earnings",
-    "version": "3.3.0",
+    "version": "3.3.4",
     "description": "Displays earnings and fundamentals in an easy-to-analyze format (MarketSmith Style)",
     "icons": {
         "128": "src/images/icon128.png"

@@ -1,8 +1,8 @@
 {
     "manifest_version": 2,
     "name": "Corporate Earnings",
-    "version": "3.2.9",
-    "description": "Displays earnings and fundamentals in the easy to analyze format",
+    "version": "3.3.4",
+    "description": "Displays earnings and fundamentals in an easy-to-analyze format (MarketSmith Style)",
     "icons": {
         "128": "src/images/icon128.png"
     },
@@ -10,7 +10,9 @@
         {
             "matches": [
                 "https://seekingalpha.com/symbol/*/earnings",
-                "https://www.zacks.com/stock/research/*/earnings-calendar"
+                "https://www.zacks.com/stock/research/*/earnings-calendar",
+                "https://finance.yahoo.com/quote/*/futures*",
+                "https://finance.yahoo.com/quote/*"
             ],
             "js": [
                 "src/js/constants.js",
@@ -25,12 +27,19 @@
         "default_popup": "src/html/popup.html"
     },
     "options_ui": {
-        "page": "src/html/options.html",
-        "chrome_style": false
+        "page": "src/html/options.html"
     },
     "background": {
-        "scripts": ["src/js/background.js"],
-        "persistent": false
+        "scripts": ["src/js/background.js"]
     },
-    "permissions": ["storage", "tabs", "https://*.finviz.com/*"]
+    "permissions": [
+        "storage",
+        "tabs",
+        "https://*.finviz.com/*",
+        "https://*.zacks.com/*",
+        "https://*.seekingalpha.com/*",
+        "https://*.yahoo.com/*",
+        "https://query1.finance.yahoo.com/*",
+        "https://query2.finance.yahoo.com/*"
+    ]
 }
