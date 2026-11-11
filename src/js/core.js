@@ -25,7 +25,7 @@ function detectSiteDataSource(fallbackDs = 1) {
     } else if (host.includes("seekingalpha.com")) {
         return 1;
     } else if (host.includes("yahoo.com")) {
-        return 2; // Yahoo pages use Zacks quarterly data as backend
+        return 3;
     }
     return fallbackDs;
 }
@@ -89,65 +89,77 @@ if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
             const isSA = currentHost.includes("seekingalpha.com");
             const isYahoo = currentHost.includes("yahoo.com");
 
+            const handleQuarterlyResponse = (response) => {
+                if (
+                    response &&
+                    !response.error &&
+                    isDefined(response.raw) &&
+                    response.raw.length > 0
+                ) {
+                    const parser = getParser(0, response.raw);
+                    if (parser && parser.qtrData && parser.qtrData.length > 0) {
+                        overwrite_qtr_data = parser.qtrData;
+                        if (parser.annualData && parser.annualData.length > 0 && annualData.length === 0) {
+                            annualData = parser.annualData;
+                        }
+                        displayEarnings(true, pageDs);
+                    }
+                }
+            };
+
             if (isZacks) {
                 // On Zacks: poll for obj_data in scripts / DOM
                 waitForZacksData((found) => {
-                    displayEarnings(found, 2);
-                }, 30);
+                    if (found) {
+                        displayEarnings(true, 2);
+                    } else if (symbol) {
+                        chrome.runtime.sendMessage(
+                            { command: "fetch_quarterly_data", symbol: symbol },
+                            handleQuarterlyResponse
+                        );
+                    }
+                }, 40);
             } else if (isSA) {
-                // On Seeking Alpha: request Zacks fallback data in background
+                // On Seeking Alpha: request background fallback data immediately
                 if (symbol) {
                     chrome.runtime.sendMessage(
-                        {
-                            command: "fetch_quarterly_data",
-                            symbol: symbol,
-                        },
-                        (response) => {
-                            if (
-                                response &&
-                                !response.error &&
-                                isDefined(response.raw) &&
-                                response.raw.length > 0
-                            ) {
-                                const parser = getParser(2, response.raw);
-                                if (parser && parser.qtrData && parser.qtrData.length > 0) {
-                                    overwrite_qtr_data = parser.qtrData;
-                                    displayEarnings(true, 1);
-                                }
-                            }
-                        }
+                        { command: "fetch_quarterly_data", symbol: symbol },
+                        handleQuarterlyResponse
                     );
                 }
-                // Also wait for Seeking Alpha page data
+                // Also wait for Seeking Alpha page data if present
                 waitForEarningsData((found) => {
                     displayEarnings(found, 1);
                 }, 30);
             } else if (isYahoo) {
-                // On Yahoo Finance: load quarterly data from Zacks backend
-                if (symbol) {
-                    chrome.runtime.sendMessage(
-                        {
-                            command: "fetch_quarterly_data",
-                            symbol: symbol,
-                        },
-                        (response) => {
-                            if (
-                                response &&
-                                !response.error &&
-                                isDefined(response.raw) &&
-                                response.raw.length > 0
-                            ) {
-                                const parser = getParser(2, response.raw);
-                                if (parser && parser.qtrData && parser.qtrData.length > 0) {
-                                    overwrite_qtr_data = parser.qtrData;
-                                    displayEarnings(true, 2);
-                                }
-                            }
+                // On Yahoo Finance: check page scripts first
+                let yf = new YFParser();
+                if (yf && yf.qtrData && yf.qtrData.length > 0) {
+                    overwrite_qtr_data = yf.qtrData;
+                    if (yf.annualData && yf.annualData.length > 0) {
+                        annualData = yf.annualData;
+                    }
+                    displayEarnings(true, 3);
+                } else {
+                    waitForYFData((found) => {
+                        if (found) {
+                            displayEarnings(true, 3);
+                        } else if (symbol) {
+                            chrome.runtime.sendMessage(
+                                { command: "fetch_quarterly_data", symbol: symbol },
+                                handleQuarterlyResponse
+                            );
                         }
-                    );
+                    }, 30);
                 }
             } else {
                 // Fallback for any other pages
+                if (symbol) {
+                    chrome.runtime.sendMessage(
+                        { command: "fetch_quarterly_data", symbol: symbol },
+                        handleQuarterlyResponse
+                    );
+                }
                 displayEarnings(true, pageDs);
             }
 
@@ -169,21 +181,33 @@ if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
     );
 }
 
-function waitForZacksData(callback, maxtries = 30, interval = 100) {
+function waitForZacksData(callback, maxtries = 40, interval = 100) {
     const poller = setInterval(() => {
         let isReady = false;
-        if (typeof document !== "undefined") {
-            if (document.querySelector("#earnings_announcements_tabs")) {
+        try {
+            const parser = new ZAParser();
+            if (parser && parser.qtrData && parser.qtrData.length > 0) {
                 isReady = true;
-            } else if (document.scripts) {
-                isReady = Array.from(document.scripts).some(
-                    (s) => s.textContent && s.textContent.includes("document.obj_data")
-                );
             }
-            if (!isReady && document.documentElement) {
-                isReady = document.documentElement.innerHTML.includes("document.obj_data");
+        } catch (e) {}
+
+        const retry = maxtries === false || maxtries-- > 0;
+        if (retry && !isReady) return;
+        clearInterval(poller);
+        callback(isReady);
+    }, interval);
+}
+
+function waitForYFData(callback, maxtries = 30, interval = 100) {
+    const poller = setInterval(() => {
+        let isReady = false;
+        try {
+            const parser = new YFParser();
+            if (parser && parser.qtrData && parser.qtrData.length > 0) {
+                isReady = true;
             }
-        }
+        } catch (e) {}
+
         const retry = maxtries === false || maxtries-- > 0;
         if (retry && !isReady) return;
         clearInterval(poller);
@@ -288,10 +312,14 @@ function pushFundamentalsData(found = true) {
     if (ratingsElem) ratingsElem.innerHTML = fundamentals.ratingsHtml || "";
 
     const newsElem = document.getElementById("ht-news-cell");
-    if (newsElem) newsElem.innerHTML = fundamentals.newsHtml || "";
+    if (newsElem) {
+        newsElem.innerHTML = '<div class="ht-section-heading">Recent News</div>' + (fundamentals.newsHtml || "No news");
+    }
 
     const insElem = document.getElementById("ht-insiders-cell");
-    if (insElem) insElem.innerHTML = fundamentals.insidersHtml || "";
+    if (insElem) {
+        insElem.innerHTML = '<div class="ht-section-heading">Insider Transactions</div>' + (fundamentals.insidersHtml || "No insider transactions");
+    }
 
     if (chart_type == CHART_TYPE.WEEKLY || chart_type == CHART_TYPE.BOTH) {
         let weekly = isDefined(fundamentals.weeklyChart)
@@ -395,7 +423,7 @@ function quarterlyToHtml(quarterlyData) {
     html += "</tr></thead><tbody>";
 
     if (!quarterlyData || quarterlyData.length == 0) {
-        html += `<tr><td colspan="${show_earnings_surprise ? 7 : 5}">No data</td></tr>`;
+        html += `<tr><td colspan="${show_earnings_surprise ? 8 : 6}" style="text-align: center; padding: 24px 10px; color: var(--text-muted); font-style: italic;">No quarterly earnings data available</td></tr>`;
         html += "</tbody></table>";
         return html;
     }
@@ -484,7 +512,7 @@ function annualToHtml(annualData) {
     html += "<thead><tr><td>Year</td><td>EPS</td><td>%Change</td><td>Revenue(Mil)</td><td>%Change</td></tr></thead><tbody>";
 
     if (!annualData || annualData.length == 0) {
-        html += '<tr><td colspan="5">No data</td></tr>';
+        html += '<tr><td colspan="5" style="text-align: center; padding: 24px 10px; color: var(--text-muted); font-style: italic;">No annual earnings data available</td></tr>';
         html += "</tbody></table>";
         return html;
     }
@@ -589,8 +617,13 @@ function fillAnnual(quarterlyData, annualData) {
             yearItem.eps = +yearItem.eps.toFixed(2);
             yearItem.rev = +yearItem.rev.toFixed(1);
             yearItem.qtrs4Year = qtrs4Year;
-            if (!annualData.some(existing => existing.year === year)) {
+            const existing = annualData.find(e => e && e.year === year);
+            if (!existing) {
                 annualData.unshift(yearItem);
+            } else {
+                if (!isDefined(existing.eps) && isDefined(yearItem.eps)) existing.eps = yearItem.eps;
+                if (!isDefined(existing.rev) && isDefined(yearItem.rev)) existing.rev = yearItem.rev;
+                existing.qtrs4Year = 4;
             }
         }
         --year;
@@ -602,13 +635,13 @@ function calculateAnnualPerf(years) {
     years.map(function (item) {
         if (!item) return;
         const previousYear = years.find((q) => q && q.year == item.year - 1);
-        if (
-            isDefined(previousYear) &&
-            item.qtrs4Year == 4 &&
-            previousYear.qtrs4Year == 4
-        ) {
-            item.epsPerf = calculatePercentChange(item.eps, previousYear.eps);
-            item.revPerf = calculatePercentChange(item.rev, previousYear.rev);
+        if (isDefined(previousYear)) {
+            if (isDefined(item.eps) && isDefined(previousYear.eps) && (item.qtrs4Year == 4 || !isDefined(item.qtrs4Year))) {
+                item.epsPerf = calculatePercentChange(item.eps, previousYear.eps);
+            }
+            if (isDefined(item.rev) && isDefined(previousYear.rev)) {
+                item.revPerf = calculatePercentChange(item.rev, previousYear.rev);
+            }
         }
     });
 }

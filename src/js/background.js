@@ -52,33 +52,47 @@ function fetchQuarterlyData(symbol, sendResponse) {
     }
 
     const results = { symbol: symbol };
-    let responseStatus = 0;
-    fetch(getQuarterlyDataUrl(symbol), {
+
+    // 1. Fetch from Yahoo Finance quote page (reliable, embeds complete quoteSummary & earningsChart)
+    fetch("https://finance.yahoo.com/quote/" + encodeURIComponent(symbol), {
         headers: {
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.9",
-            "Cache-Control": "no-cache",
         }
     })
         .then(function (response) {
-            responseStatus = response.status;
-            return response.text();
+            if (response.ok) return response.text();
+            throw new Error("Yahoo status: " + response.status);
         })
         .then(function (html) {
-            if (responseStatus != 200) {
-                sendResponse({
-                    error: "failed to fetch quarterly data for symbol: " + symbol + " status: " + responseStatus,
-                });
-                return;
-            }
             results.raw = html;
+            results.source = "yahoo";
             sendResponse(results);
         })
-        .catch(function (err) {
-            console.log("Failed to fetch quarterly data: ", err);
-            sendResponse({
-                error: "failed to fetch quarterly data for symbol: " + symbol,
-            });
+        .catch(function (yfErr) {
+            console.warn("Yahoo quarterly fetch failed, attempting Zacks fallback:", yfErr);
+            // 2. Fallback to Zacks
+            fetch(getQuarterlyDataUrl(symbol), {
+                headers: {
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                    "Accept-Language": "en-US,en;q=0.9",
+                }
+            })
+                .then(function (response) {
+                    if (response.ok) return response.text();
+                    throw new Error("Zacks status: " + response.status);
+                })
+                .then(function (html) {
+                    results.raw = html;
+                    results.source = "zacks";
+                    sendResponse(results);
+                })
+                .catch(function (zaErr) {
+                    console.error("Failed to fetch quarterly data from both Yahoo and Zacks: ", zaErr);
+                    sendResponse({
+                        error: "failed to fetch quarterly data for symbol: " + symbol,
+                    });
+                });
         });
 }
 

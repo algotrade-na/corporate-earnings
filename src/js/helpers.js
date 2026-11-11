@@ -1,3 +1,9 @@
+function logWarn(msg, err) {
+    if (typeof console !== "undefined" && console.warn) {
+        console.warn(msg, err);
+    }
+}
+
 function hideNativeContent() {
     try {
         const root = document.getElementById("ht-root-container");
@@ -10,7 +16,7 @@ function hideNativeContent() {
             });
         }
     } catch (e) {
-        console.warn("hideNativeContent error", e);
+        logWarn("hideNativeContent error", e);
     }
 }
 
@@ -332,9 +338,19 @@ function getHighlightClass4Surprise(num, str) {
 }
 
 function getParser(ds_type, html) {
-    if (ds_type === 1) return new SAParser(html);
-    else if (ds_type === 2) return new ZAParser(html);
-    else return new FallbackParser(html);
+    if (isDefined(html) && typeof html === "string") {
+        if (html.includes("earningsChart") || html.includes("financialsChart")) {
+            return new YFParser(html);
+        }
+        if (html.includes("obj_data") || html.includes("earnings_announcements_earnings_table")) {
+            return new ZAParser(html);
+        }
+        return new SAParser(html);
+    }
+    if (ds_type === 3) return new YFParser();
+    if (ds_type === 2) return new ZAParser();
+    if (ds_type === 1) return new SAParser();
+    return new FallbackParser();
 }
 
 class Parser {
@@ -357,7 +373,7 @@ class SAParser extends Parser {
             this.qtrData = parsedData[0] || [];
             this.annualData = parsedData[1] || [];
         } catch (e) {
-            console.warn("SAParser failed to parse HTML", e);
+            logWarn("SAParser failed to parse HTML", e);
             this.qtrData = [];
             this.annualData = [];
         }
@@ -438,7 +454,7 @@ class SAParser extends Parser {
                 }
             });
         } catch (err) {
-            console.warn("SAParser.parse error", err);
+            logWarn("SAParser.parse error", err);
         }
         return [quarterlyData, annualData];
     }
@@ -452,7 +468,7 @@ class ZAParser extends Parser {
             this.qtrData = parsedData[0] || [];
             this.annualData = parsedData[1] || [];
         } catch (e) {
-            console.warn("ZAParser failed to parse HTML", e);
+            logWarn("ZAParser failed to parse HTML", e);
             this.qtrData = [];
             this.annualData = [];
         }
@@ -467,7 +483,7 @@ class ZAParser extends Parser {
             if (!isDefined(html) && typeof document !== "undefined") {
                 const scripts = Array.from(document.scripts || []);
                 for (const s of scripts) {
-                    if (s.textContent && s.textContent.includes("document.obj_data")) {
+                    if (s.textContent && s.textContent.includes("obj_data")) {
                         jsonStr = ZAParser.extractJsonFromText(s.textContent);
                         if (jsonStr) break;
                     }
@@ -510,14 +526,14 @@ class ZAParser extends Parser {
                 });
             }
         } catch (err) {
-            console.warn("ZAParser.parse error", err);
+            logWarn("ZAParser.parse error", err);
         }
         return [quarterlyData, annualData];
     }
 
     static extractJsonFromText(text) {
         if (!text || typeof text !== "string") return "";
-        const m = text.match(/document\.obj_data\s*=\s*\{/);
+        const m = text.match(/(?:document\.)?obj_data\s*=\s*\{/);
         if (!m) return "";
         const start = m.index + m[0].length - 1;
         let braceCount = 0;
@@ -542,6 +558,210 @@ class ZAParser extends Parser {
                     braceCount--;
                     if (braceCount === 0) {
                         return text.substring(start, i + 1);
+                    }
+                }
+            }
+        }
+        return "";
+    }
+}
+
+class YFParser extends Parser {
+    constructor(html) {
+        super();
+        try {
+            const parsedData = YFParser.parse(html);
+            this.qtrData = parsedData[0] || [];
+            this.annualData = parsedData[1] || [];
+        } catch (e) {
+            logWarn("YFParser failed to parse", e);
+            this.qtrData = [];
+            this.annualData = [];
+        }
+    }
+
+    static parse(html = undefined) {
+        const quarterlyData = [];
+        const annualData = [];
+        try {
+            let earningsObj = null;
+            let keyStatsObj = null;
+
+            if (isDefined(html) && typeof html === "string") {
+                const extracted = YFParser.extractEarningsFromHtml(html);
+                if (extracted) {
+                    earningsObj = extracted.earnings;
+                    if (extracted.keyStats) keyStatsObj = extracted.keyStats;
+                }
+            } else if (typeof document !== "undefined") {
+                const scripts = Array.from(document.scripts || document.querySelectorAll("script") || []);
+                for (const s of scripts) {
+                    const text = s.textContent || "";
+                    if (!text) continue;
+                    if (text.includes("earningsChart") || text.includes("financialsChart")) {
+                        const extracted = YFParser.extractEarningsFromText(text);
+                        if (extracted) {
+                            earningsObj = extracted.earnings;
+                            if (extracted.keyStats) keyStatsObj = extracted.keyStats;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (!earningsObj) return [quarterlyData, annualData];
+
+            const ec = earningsObj.earningsChart || {};
+            const fc = earningsObj.financialsChart || {};
+            const qEc = ec.quarterly || [];
+            const qFc = fc.quarterly || [];
+            const yFc = fc.yearly || [];
+
+            qEc.forEach((item) => {
+                const q = new YFQarter(item, qFc);
+                if (isQuarterValid(q)) {
+                    quarterlyData.push(q);
+                }
+            });
+
+            let shares = (keyStatsObj && keyStatsObj.sharesOutstanding && keyStatsObj.sharesOutstanding.raw)
+                ? keyStatsObj.sharesOutstanding.raw
+                : undefined;
+
+            yFc.forEach((item) => {
+                if (!item || !item.date) return;
+                const yearInt = parseInt(item.date);
+                if (isNaN(yearInt)) return;
+
+                let revMil = undefined;
+                if (item.revenue && isDefined(item.revenue.raw)) {
+                    revMil = Math.round(item.revenue.raw / 1e6 * 10) / 10;
+                }
+
+                let epsVal = undefined;
+                if (shares && item.earnings && isDefined(item.earnings.raw)) {
+                    epsVal = Math.round(item.earnings.raw / shares * 100) / 100;
+                }
+
+                const yearObj = new Year(yearInt, yearInt, epsVal, revMil);
+                yearObj.qtrs4Year = 4;
+                annualData.push(yearObj);
+            });
+        } catch (err) {
+            logWarn("YFParser.parse error", err);
+        }
+        return [quarterlyData, annualData];
+    }
+
+    static extractEarningsFromHtml(html) {
+        if (!html || typeof html !== "string") return null;
+        const scriptRegex = /<script\b[^>]*>([\s\S]*?)<\/script>/gi;
+        let match;
+        while ((match = scriptRegex.exec(html)) !== null) {
+            const scriptText = match[1];
+            if (scriptText.includes("earningsChart") || scriptText.includes("financialsChart")) {
+                const extracted = YFParser.extractEarningsFromText(scriptText);
+                if (extracted) return extracted;
+            }
+        }
+        return YFParser.extractEarningsFromText(html);
+    }
+
+    static extractEarningsFromText(text) {
+        if (!text || typeof text !== "string") return null;
+        try {
+            let obj = JSON.parse(text.trim());
+            let extracted = YFParser.findEarningsInObject(obj);
+            if (extracted) return extracted;
+        } catch (e) {}
+
+        const qsMatch = text.match(/"quoteSummary"\s*:\s*\{/);
+        if (qsMatch) {
+            const start = qsMatch.index + 15;
+            const jsonSub = YFParser.extractBalancedJson(text, start);
+            if (jsonSub) {
+                try {
+                    const qsObj = JSON.parse(jsonSub);
+                    let extracted = YFParser.findEarningsInQuoteSummary(qsObj);
+                    if (extracted) return extracted;
+                } catch (e) {}
+            }
+        }
+
+        const ecMatch = text.match(/"earnings"\s*:\s*\{/);
+        if (ecMatch) {
+            const start = ecMatch.index + 11;
+            const jsonSub = YFParser.extractBalancedJson(text, start);
+            if (jsonSub) {
+                try {
+                    const earningsObj = JSON.parse(jsonSub);
+                    if (earningsObj.earningsChart || earningsObj.financialsChart) {
+                        return { earnings: earningsObj };
+                    }
+                } catch (e) {}
+            }
+        }
+
+        return null;
+    }
+
+    static findEarningsInObject(obj) {
+        if (!obj || typeof obj !== "object") return null;
+        if (obj.body && typeof obj.body === "string") {
+            try {
+                const bodyObj = JSON.parse(obj.body);
+                return YFParser.findEarningsInObject(bodyObj);
+            } catch (e) {}
+        }
+        if (obj.quoteSummary) {
+            return YFParser.findEarningsInQuoteSummary(obj.quoteSummary);
+        }
+        if (obj.earnings && (obj.earnings.earningsChart || obj.earnings.financialsChart)) {
+            return { earnings: obj.earnings, keyStats: obj.defaultKeyStatistics };
+        }
+        return null;
+    }
+
+    static findEarningsInQuoteSummary(qs) {
+        if (!qs || !qs.result || !Array.isArray(qs.result) || qs.result.length === 0) return null;
+        const res = qs.result[0];
+        if (res.earnings && (res.earnings.earningsChart || res.earnings.financialsChart)) {
+            return { earnings: res.earnings, keyStats: res.defaultKeyStatistics };
+        }
+        return null;
+    }
+
+    static extractBalancedJson(text, startIdx) {
+        let braceCount = 0;
+        let inString = false;
+        let escape = false;
+        let firstBrace = -1;
+        for (let i = startIdx; i < text.length; i++) {
+            const ch = text[i];
+            if (firstBrace === -1) {
+                if (ch === "{") {
+                    firstBrace = i;
+                    braceCount = 1;
+                }
+                continue;
+            }
+            if (inString) {
+                if (escape) {
+                    escape = false;
+                } else if (ch === "\\") {
+                    escape = true;
+                } else if (ch === '"') {
+                    inString = false;
+                }
+            } else {
+                if (ch === '"') {
+                    inString = true;
+                } else if (ch === "{") {
+                    braceCount++;
+                } else if (ch === "}") {
+                    braceCount--;
+                    if (braceCount === 0) {
+                        return text.substring(firstBrace, i + 1);
                     }
                 }
             }
@@ -738,6 +958,63 @@ class ZAQarter extends Quarter {
             }
         });
         return rev;
+    }
+}
+
+class YFQarter extends Quarter {
+    constructor(ecItem, qFcList = []) {
+        super();
+        if (!ecItem) return;
+        const dateLabel = ecItem.date || "";
+        const periodEnd = (ecItem.periodEndDate && ecItem.periodEndDate.fmt) ? ecItem.periodEndDate.fmt : "";
+        const reportedDate = (ecItem.reportedDate && ecItem.reportedDate.fmt) ? ecItem.reportedDate.fmt : "";
+        
+        let monthStr = "Mar";
+        let yearNum = 2025;
+        if (periodEnd) {
+            const parts = periodEnd.split("-");
+            if (parts.length >= 2) {
+                yearNum = parseInt(parts[0]) || 2025;
+                const mInt = parseInt(parts[1]) || 3;
+                monthStr = MONTH_MAP[mInt] || "Mar";
+            }
+        } else if (dateLabel.length >= 6) {
+            const qNum = dateLabel.charAt(0);
+            yearNum = parseInt(dateLabel.substring(2)) || 2025;
+            const qMonths = { "1": "Mar", "2": "Jun", "3": "Sep", "4": "Dec" };
+            monthStr = qMonths[qNum] || "Mar";
+        }
+        
+        this.date = reportedDate || periodEnd || dateLabel || "-";
+        this.name = monthStr + " " + yearNum;
+        this.month = monthStr;
+        this.year = yearNum;
+        
+        let actualEps = (ecItem.actual && isDefined(ecItem.actual.raw)) ? ecItem.actual.raw : undefined;
+        let surpriseVal = undefined;
+        if (isDefined(ecItem.surprisePct)) {
+            let sFloat = parseFloat(ecItem.surprisePct);
+            if (!isNaN(sFloat)) {
+                surpriseVal = Math.round(sFloat);
+            }
+        }
+        this.eps = {
+            eps: actualEps,
+            surprisePerf: surpriseVal
+        };
+        
+        let revMil = undefined;
+        if (Array.isArray(qFcList)) {
+            const match = qFcList.find(f => 
+                f && (f.date === dateLabel || (ecItem.fiscalQuarter && f.fiscalQuarter === ecItem.fiscalQuarter))
+            );
+            if (match && match.revenue && isDefined(match.revenue.raw)) {
+                revMil = Math.round(match.revenue.raw / 1e6 * 10) / 10;
+            }
+        }
+        this.rev = {
+            rev: revMil
+        };
     }
 }
 
