@@ -1,7 +1,7 @@
 {
     "manifest_version": 2,
     "name": "Corporate Earnings",
-    "version": "3.3.4",
+    "version": "3.3.5",
     "description": "Displays earnings and fundamentals in an easy-to-analyze format (MarketSmith Style)",
     "icons": {
         "128": "src/images/icon128.png"
@@ -9,8 +9,8 @@
     "content_scripts": [
         {
             "matches": [
-                "https://seekingalpha.com/symbol/*/earnings",
-                "https://www.zacks.com/stock/research/*/earnings-calendar",
+                "https://seekingalpha.com/symbol/*/earnings*",
+                "https://www.zacks.com/stock/research/*/earnings-calendar*",
                 "https://finance.yahoo.com/quote/*/futures*",
                 "https://finance.yahoo.com/quote/*"
             ],

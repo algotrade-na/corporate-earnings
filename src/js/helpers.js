@@ -1,11 +1,13 @@
 function hideNativeContent() {
     try {
-        let waiting = document.querySelector("#ht-waiting");
-        if (!waiting) return;
-        let elem = waiting.nextElementSibling;
-        while (elem) {
-            hide(elem);
-            elem = elem.nextElementSibling;
+        const root = document.getElementById("ht-root-container");
+        const waiting = document.getElementById("ht-waiting");
+        if (document.body && document.body.children) {
+            Array.from(document.body.children).forEach((child) => {
+                if (child !== root && child !== waiting && child.id !== "ht-msg-noearnings") {
+                    hide(child);
+                }
+            });
         }
     } catch (e) {
         console.warn("hideNativeContent error", e);
@@ -24,7 +26,7 @@ function collectChildText(elem) {
         } else if (child.textContent) {
             cells.push(child.textContent.trim());
         }
-        if (cells.length > 0 && cells[0] !== "") {
+        if (cells.length > 0 && cells.some(c => c !== "")) {
             rows.push(cells);
         }
     });
@@ -54,7 +56,7 @@ function revenueStringToFloat(revStr) {
     } else if (revStr.endsWith("B")) {
         return Math.round(parseFloat(revStr) * 1000);
     } else {
-        let val = parseFloat(revStr);
+        let val = parseFloat(revStr.replace(/[^\d.-]/g, ""));
         return isNaN(val) ? undefined : parseFloat((val / 1000).toFixed(2));
     }
 }
@@ -90,6 +92,7 @@ function isQuarterValid(qtr) {
         isDefined(qtr) &&
         isDefined(qtr.name) &&
         qtr.name.length > 0 &&
+        qtr.name !== "-" &&
         isDefined(qtr.eps) &&
         isDefined(qtr.eps.eps) &&
         !isNaN(qtr.eps.eps)
@@ -175,11 +178,14 @@ function getSymbol(url) {
     let res = SA_REGEX.exec(url);
     if (res != null) {
         return res[1].toUpperCase();
-    } else {
-        res = ZA_REGEX.exec(url);
-        if (res != null) {
-            return res[1].toUpperCase();
-        }
+    }
+    res = ZA_REGEX.exec(url);
+    if (res != null) {
+        return res[1].toUpperCase();
+    }
+    res = YF_REGEX.exec(url);
+    if (res != null) {
+        return res[1].toUpperCase();
     }
     return undefined;
 }
@@ -363,64 +369,73 @@ class SAParser extends Parser {
             const parser = new DOMParser();
             let dom = isDefined(html)
                 ? parser.parseFromString(html, "text/html")
-                : document;
-            
-            const monthYearRegex = /^[A-Za-z]{3} \d{4}/;
-            let blocks = dom.querySelectorAll('[data-test-id="table-body"], [data-test-id*="table"], tbody, [role="rowgroup"], div[class*="table"]');
-            
+                : (typeof document !== "undefined" ? document : null);
+            if (!dom) return [quarterlyData, annualData];
+
+            const monthYearRegex = /^[A-Za-z]{3}\s*\d{4}/;
+            const qtrRegex = /(?:FQ[1-4]|Q[1-4]|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s*\d{4}\b)/i;
+
+            let blocks = Array.from(dom.querySelectorAll('[data-test-id="table-body"], [data-test-id*="table"], tbody, [role="rowgroup"], div[class*="table"]'));
+            if (blocks.length === 0) {
+                blocks = Array.from(dom.querySelectorAll('table'));
+            }
+
             let dataBlockCount = 1;
             blocks.forEach((block) => {
-                if (block.textContent && (block.textContent.startsWith('FY') || block.textContent.includes('Fiscal Year'))) {
-                    return; 
-                }
                 let rows = collectChildText(block);
                 if (!rows || rows.length === 0) return;
 
-                switch (dataBlockCount) {
-                    case 1:
-                        for (const row of rows) {
-                            if (
-                                !isDefined(row[0]) ||
-                                row[0] == "" ||
-                                row[0].match(monthYearRegex) == null
-                            )
-                                continue;
-                            let year = new Year(
-                                getAnnualEstimateYear(row[0]),
-                                "*" + getAnnualEstimateYear(row[0]),
-                                row[1]
-                            );
-                            year.qtrs4Year = 4;
-                            annualData.push(year);
-                        }
-                        break;
-                    case 2:
-                        for (const row of rows) {
-                            if (
-                                !isDefined(row[0]) ||
-                                row[0] == "" ||
-                                row[0].match(monthYearRegex) == null
-                            )
-                                continue;
-                            let yearInt = getAnnualEstimateYear(row[0]);
-                            const foundYear = annualData.find(
-                                (q) => q.year == yearInt
-                            );
-                            if (foundYear) {
-                                foundYear.rev = revenueStringToFloat(row[1]);
-                            } else {
-                                let year = new Year(
-                                    yearInt,
-                                    "*" + yearInt,
-                                    undefined,
-                                    revenueStringToFloat(row[1])
-                                );
-                                annualData.push(year);
+                // Check if this block is quarterly earnings data (contains FQ or quarterly labels and numeric EPS/Rev)
+                let isQuarterlyBlock = rows.some(r => r[0] && qtrRegex.test(r[0]) && r.length >= 3);
+
+                if (isQuarterlyBlock) {
+                    for (const row of rows) {
+                        if (!row[0] || !qtrRegex.test(row[0])) continue;
+                        let q = new SAQarter(row);
+                        if (isQuarterValid(q)) {
+                            if (!quarterlyData.some(existing => existing.name === q.name)) {
+                                quarterlyData.unshift(q);
                             }
                         }
-                        break;
+                    }
+                } else if (block.textContent && (block.textContent.startsWith('FY') || block.textContent.includes('Fiscal Year'))) {
+                    return;
+                } else {
+                    // Estimates blocks (EPS & Revenue estimates)
+                    switch (dataBlockCount) {
+                        case 1:
+                            for (const row of rows) {
+                                if (!isDefined(row[0]) || row[0] == "" || row[0].match(monthYearRegex) == null) continue;
+                                let year = new Year(
+                                    getAnnualEstimateYear(row[0]),
+                                    "*" + getAnnualEstimateYear(row[0]),
+                                    row[1]
+                                );
+                                year.qtrs4Year = 4;
+                                annualData.push(year);
+                            }
+                            break;
+                        case 2:
+                            for (const row of rows) {
+                                if (!isDefined(row[0]) || row[0] == "" || row[0].match(monthYearRegex) == null) continue;
+                                let yearInt = getAnnualEstimateYear(row[0]);
+                                const foundYear = annualData.find((q) => q.year == yearInt);
+                                if (foundYear) {
+                                    foundYear.rev = revenueStringToFloat(row[1]);
+                                } else {
+                                    let year = new Year(
+                                        yearInt,
+                                        "*" + yearInt,
+                                        undefined,
+                                        revenueStringToFloat(row[1])
+                                    );
+                                    annualData.push(year);
+                                }
+                            }
+                            break;
+                    }
+                    ++dataBlockCount;
                 }
-                ++dataBlockCount;
             });
         } catch (err) {
             console.warn("SAParser.parse error", err);
@@ -435,55 +450,46 @@ class ZAParser extends Parser {
         try {
             const parsedData = ZAParser.parse(html);
             this.qtrData = parsedData[0] || [];
-            this.annualData = undefined;
+            this.annualData = parsedData[1] || [];
         } catch (e) {
             console.warn("ZAParser failed to parse HTML", e);
             this.qtrData = [];
-            this.annualData = undefined;
+            this.annualData = [];
         }
     }
 
     static parse(html = undefined) {
         const quarterlyData = [], annualData = [];
         try {
-            const parser = new DOMParser();
-            let dom = isDefined(html)
-                ? parser.parseFromString(html, "text/html")
-                : document;
-            
             let jsonStr = "";
-            const rawText = isDefined(html) ? html : (dom.documentElement ? dom.documentElement.innerHTML : "");
-            
-            const objDataMatch = rawText.match(/document\.obj_data\s*=\s*(\{[\s\S]*?\});\s*(?:document|\n|\$|<\/script>)/);
-            if (objDataMatch) {
-                jsonStr = objDataMatch[1];
-            } else {
-                const tabsElem = dom.querySelector("#earnings_announcements_tabs");
-                if (tabsElem && tabsElem.nextElementSibling) {
-                    let scriptText = tabsElem.nextElementSibling.innerHTML.trim();
-                    let start = scriptText.indexOf("{");
-                    if (start !== -1) {
-                        let braceCount = 0;
-                        let end = -1;
-                        for (let i = start; i < scriptText.length; i++) {
-                            if (scriptText[i] === '{') braceCount++;
-                            else if (scriptText[i] === '}') {
-                                braceCount--;
-                                if (braceCount === 0) {
-                                    end = i;
-                                    break;
-                                }
-                            }
-                        }
-                        if (end !== -1) {
-                            jsonStr = scriptText.substring(start, end + 1);
-                        }
+
+            // 1. If running live in document, check inline scripts directly
+            if (!isDefined(html) && typeof document !== "undefined") {
+                const scripts = Array.from(document.scripts || []);
+                for (const s of scripts) {
+                    if (s.textContent && s.textContent.includes("document.obj_data")) {
+                        jsonStr = ZAParser.extractJsonFromText(s.textContent);
+                        if (jsonStr) break;
                     }
                 }
             }
 
+            // 2. If not found, check rawText (html or document.documentElement.innerHTML)
             if (!jsonStr) {
-                return [quarterlyData, undefined];
+                const rawText = isDefined(html) ? html : (typeof document !== "undefined" && document.documentElement ? document.documentElement.innerHTML : "");
+                jsonStr = ZAParser.extractJsonFromText(rawText);
+            }
+
+            // 3. Fallback: check #earnings_announcements_tabs sibling
+            if (!jsonStr && typeof document !== "undefined") {
+                const tabsElem = document.querySelector("#earnings_announcements_tabs");
+                if (tabsElem && tabsElem.nextElementSibling) {
+                    jsonStr = ZAParser.extractJsonFromText(tabsElem.nextElementSibling.innerHTML);
+                }
+            }
+
+            if (!jsonStr) {
+                return [quarterlyData, annualData];
             }
 
             let dataObj = JSON.parse(jsonStr);
@@ -506,7 +512,41 @@ class ZAParser extends Parser {
         } catch (err) {
             console.warn("ZAParser.parse error", err);
         }
-        return [quarterlyData, undefined];
+        return [quarterlyData, annualData];
+    }
+
+    static extractJsonFromText(text) {
+        if (!text || typeof text !== "string") return "";
+        const m = text.match(/document\.obj_data\s*=\s*\{/);
+        if (!m) return "";
+        const start = m.index + m[0].length - 1;
+        let braceCount = 0;
+        let inString = false;
+        let escape = false;
+        for (let i = start; i < text.length; i++) {
+            const ch = text[i];
+            if (inString) {
+                if (escape) {
+                    escape = false;
+                } else if (ch === "\\") {
+                    escape = true;
+                } else if (ch === '"') {
+                    inString = false;
+                }
+            } else {
+                if (ch === '"') {
+                    inString = true;
+                } else if (ch === "{") {
+                    braceCount++;
+                } else if (ch === "}") {
+                    braceCount--;
+                    if (braceCount === 0) {
+                        return text.substring(start, i + 1);
+                    }
+                }
+            }
+        }
+        return "";
     }
 }
 
@@ -517,39 +557,72 @@ class Quarter {
 class SAQarter extends Quarter {
     constructor(cells) {
         super();
-        if (!cells || cells.length < 4) return;
+        if (!cells || cells.length < 3) return;
         const nameAttr = SAQarter.parseQtrName(cells[0] || "");
+        this.date = cells[0] || "-";
         this.name = nameAttr.name;
         this.month = nameAttr.month;
         this.year = parseInt(nameAttr.year) || 0;
         this.eps = SAQarter.parseQtrEps(cells[1], cells[2]);
-        this.rev = SAQarter.parseQtrRev(cells[3], cells[5]);
+        this.rev = SAQarter.parseQtrRev(cells[3], isDefined(cells[5]) && cells[5] !== "" ? cells[5] : cells[4]);
     }
 
     static parseQtrName(str) {
         let qtr = { name: "-", month: "-", year: "0" };
         if (!str || typeof str !== "string") return qtr;
+
+        // 1. Format: "FQ3 2026 (Jun 2026)" or "(Jun 2026)"
         let start = str.indexOf("(") + 1;
         let end = str.indexOf(")");
         if (start > 0 && end > start) {
-            qtr.name = str.substring(start, end);
-            qtr.month = qtr.name.substr(0, 3);
-            qtr.year = qtr.name.substr(4);
+            let inside = str.substring(start, end).trim();
+            let parts = inside.split(/\s+/);
+            if (parts.length >= 2) {
+                qtr.name = parts[0].substr(0, 3) + " " + parts[1];
+                qtr.month = parts[0].substr(0, 3);
+                qtr.year = parts[1];
+                return qtr;
+            }
         }
+
+        // 2. Format: "Jun 2026" or "June 2026"
+        let m = str.match(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{4})\b/i);
+        if (m) {
+            let mon = m[1].substr(0, 3);
+            mon = mon.charAt(0).toUpperCase() + mon.substr(1).toLowerCase();
+            qtr.name = mon + " " + m[2];
+            qtr.month = mon;
+            qtr.year = m[2];
+            return qtr;
+        }
+
+        // 3. Format: "FQ1 2026" or "Q1 2026"
+        let qm = str.match(/\b(?:FQ|Q)([1-4])\s+(\d{4})\b/i);
+        if (qm) {
+            const quarterMonths = { "1": "Mar", "2": "Jun", "3": "Sep", "4": "Dec" };
+            let mon = quarterMonths[qm[1]] || "Mar";
+            qtr.name = mon + " " + qm[2];
+            qtr.month = mon;
+            qtr.year = qm[2];
+            return qtr;
+        }
+
         return qtr;
     }
 
     static parseQtrEps(epsStr, surpriseStr) {
         let eps = { eps: undefined };
         if (!epsStr || epsStr === "" || epsStr === "-") return eps;
-        let val = parseFloat(epsStr);
+        let clean = epsStr.replace(/[\$\,]/g, "");
+        let val = parseFloat(clean);
         eps.eps = isNaN(val) ? undefined : val;
         if (
             isDefined(surpriseStr) &&
             surpriseStr !== "-" &&
             isDefined(eps.eps)
         ) {
-            let surpVal = parseFloat(surpriseStr);
+            let cleanSurp = surpriseStr.replace(/[\$\,%]/g, "");
+            let surpVal = parseFloat(cleanSurp);
             if (!isNaN(surpVal)) {
                 eps.surprisePerf = SAQarter.calculateSurprisePercent(
                     surpVal,

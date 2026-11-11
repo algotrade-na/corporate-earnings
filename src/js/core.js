@@ -12,6 +12,23 @@ var annualData = [];
 var fundamentals = {};
 
 let overwrite_qtr_data = undefined;
+let pageDs = 1;
+
+// Detect current site automatically
+function detectSiteDataSource(fallbackDs = 1) {
+    if (typeof window === "undefined" || !window.location || !window.location.hostname) {
+        return fallbackDs;
+    }
+    const host = window.location.hostname.toLowerCase();
+    if (host.includes("zacks.com")) {
+        return 2;
+    } else if (host.includes("seekingalpha.com")) {
+        return 1;
+    } else if (host.includes("yahoo.com")) {
+        return 2; // Yahoo pages use Zacks quarterly data as backend
+    }
+    return fallbackDs;
+}
 
 if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
     chrome.storage.local.get(
@@ -43,15 +60,20 @@ if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
             insertCSS();
             displayWaiting();
 
-            if (fetch_fundamental_data) {
+            pageDs = detectSiteDataSource(default_ds);
+            const symbol = getSymbol(window.location.href);
+
+            if (fetch_fundamental_data && symbol) {
                 chrome.runtime.sendMessage(
                     {
                         command: "fetch_fundamentals",
+                        symbol: symbol,
                         chart_type: chart_type,
                     },
                     (response) => {
                         if (response && !response.error) {
                             extractFundamentalData(response, fundamentals);
+                            pushFundamentalsData();
                             waitForEl(
                                 "#ht-root-container",
                                 pushFundamentalsData,
@@ -62,33 +84,71 @@ if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
                 );
             }
 
-            if (default_ds === 1) {
-                chrome.runtime.sendMessage(
-                    {
-                        command: "fetch_quarterly_data",
-                    },
-                    (response) => {
-                        if (
-                            response &&
-                            !response.error &&
-                            isDefined(response.raw) &&
-                            response.raw.length > 0
-                        ) {
-                            const parser = getParser(2, response.raw);
-                            if (parser && parser.qtrData) {
-                                overwrite_qtr_data = parser.qtrData;
+            const currentHost = window.location.hostname.toLowerCase();
+            const isZacks = currentHost.includes("zacks.com");
+            const isSA = currentHost.includes("seekingalpha.com");
+            const isYahoo = currentHost.includes("yahoo.com");
+
+            if (isZacks) {
+                // On Zacks: poll for obj_data in scripts / DOM
+                waitForZacksData((found) => {
+                    displayEarnings(found, 2);
+                }, 30);
+            } else if (isSA) {
+                // On Seeking Alpha: request Zacks fallback data in background
+                if (symbol) {
+                    chrome.runtime.sendMessage(
+                        {
+                            command: "fetch_quarterly_data",
+                            symbol: symbol,
+                        },
+                        (response) => {
+                            if (
+                                response &&
+                                !response.error &&
+                                isDefined(response.raw) &&
+                                response.raw.length > 0
+                            ) {
+                                const parser = getParser(2, response.raw);
+                                if (parser && parser.qtrData && parser.qtrData.length > 0) {
+                                    overwrite_qtr_data = parser.qtrData;
+                                    displayEarnings(true, 1);
+                                }
                             }
                         }
-                    }
-                );
-            }
-
-            if (default_ds === 1) {
-                // Seeking Alpha
-                waitForEarningsData(displayEarnings, 30);
-            } else if (default_ds === 2) {
-                // Zacks
-                displayEarnings(true);
+                    );
+                }
+                // Also wait for Seeking Alpha page data
+                waitForEarningsData((found) => {
+                    displayEarnings(found, 1);
+                }, 30);
+            } else if (isYahoo) {
+                // On Yahoo Finance: load quarterly data from Zacks backend
+                if (symbol) {
+                    chrome.runtime.sendMessage(
+                        {
+                            command: "fetch_quarterly_data",
+                            symbol: symbol,
+                        },
+                        (response) => {
+                            if (
+                                response &&
+                                !response.error &&
+                                isDefined(response.raw) &&
+                                response.raw.length > 0
+                            ) {
+                                const parser = getParser(2, response.raw);
+                                if (parser && parser.qtrData && parser.qtrData.length > 0) {
+                                    overwrite_qtr_data = parser.qtrData;
+                                    displayEarnings(true, 2);
+                                }
+                            }
+                        }
+                    );
+                }
+            } else {
+                // Fallback for any other pages
+                displayEarnings(true, pageDs);
             }
 
             // listen for option updates
@@ -109,15 +169,41 @@ if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
     );
 }
 
-function waitForEarningsData(callback, maxtries = false, interval = 100) {
+function waitForZacksData(callback, maxtries = 30, interval = 100) {
     const poller = setInterval(() => {
-        const isContains = contains("h2", "FQ") || contains("table", "Earnings") || contains("div", "Earnings");
+        let isReady = false;
+        if (typeof document !== "undefined") {
+            if (document.querySelector("#earnings_announcements_tabs")) {
+                isReady = true;
+            } else if (document.scripts) {
+                isReady = Array.from(document.scripts).some(
+                    (s) => s.textContent && s.textContent.includes("document.obj_data")
+                );
+            }
+            if (!isReady && document.documentElement) {
+                isReady = document.documentElement.innerHTML.includes("document.obj_data");
+            }
+        }
+        const retry = maxtries === false || maxtries-- > 0;
+        if (retry && !isReady) return;
+        clearInterval(poller);
+        callback(isReady);
+    }, interval);
+}
+
+function waitForEarningsData(callback, maxtries = 30, interval = 100) {
+    const poller = setInterval(() => {
+        const isContains =
+            contains("h2", "FQ") ||
+            contains("table", "Earnings") ||
+            contains("div", "Earnings") ||
+            contains("table", "FQ");
         const retry = maxtries === false || maxtries-- > 0;
         if (retry && !isContains) return;
         clearInterval(poller);
         setTimeout(function () {
             callback(isContains);
-        }, 1000);
+        }, 800);
     }, interval);
 }
 
@@ -133,7 +219,7 @@ function waitForEl(el, callback, maxtries = false, interval = 200) {
 
 function pushFundamentalsData(found = true) {
     if (!found) return;
-    if (!isDefined(fundamentals.ticker)) return;
+    if (!isDefined(fundamentals.ticker) || fundamentals.ticker === "") return;
 
     let companyHtml = "";
     if (isDefined(fundamentals.companySite))
@@ -224,28 +310,38 @@ function pushFundamentalsData(found = true) {
     show(document.getElementById("ht-fundamentals-container"));
 }
 
-function displayEarnings(isContains) {
-    extractAndProcessEarningsData();
+function displayEarnings(isContains, dsToUse = pageDs) {
+    extractAndProcessEarningsData(dsToUse);
+
+    const noEarningsMsg = document.getElementById("ht-msg-noearnings");
+    if (quarterlyData.length > 0 || annualData.length > 0 || isDefined(fundamentals.ticker)) {
+        if (noEarningsMsg) noEarningsMsg.remove();
+    }
+
     if (document.getElementById("ht-root-container") == null) {
         if (quarterlyData.length == 0 && annualData.length == 0) {
             hide(document.getElementById("ht-waiting"));
-            if (isDefined(fundamentals.ticker)) {
+            if (isDefined(fundamentals.ticker) && fundamentals.ticker !== "") {
                 insertHTML();
                 pushFundamentalsData();
                 pushEarningsData();
                 hideNativeContent();
             } else {
-                bodyPrepend(
-                    '<div id="ht-msg-noearnings">No earnings data available for this symbol.</div>'
-                );
+                if (!document.getElementById("ht-msg-noearnings")) {
+                    bodyPrepend(
+                        '<div id="ht-msg-noearnings">No earnings data available for this symbol.</div>'
+                    );
+                }
             }
         } else {
             insertHTML();
             pushEarningsData();
+            pushFundamentalsData();
             hideNativeContent();
         }
     } else {
         pushEarningsData();
+        pushFundamentalsData();
     }
 }
 
@@ -258,9 +354,11 @@ function pushEarningsData() {
 }
 
 function displayWaiting() {
-    bodyPrepend(
-        '<div id="ht-waiting"><p class="ht-loadingmsg">Waiting for data</p></div>'
-    );
+    if (!document.getElementById("ht-waiting")) {
+        bodyPrepend(
+            '<div id="ht-waiting"><p class="ht-loadingmsg">Waiting for data</p></div>'
+        );
+    }
 }
 
 function insertCSS() {
@@ -416,14 +514,16 @@ function annualToHtml(annualData) {
     return html;
 }
 
-function extractAndProcessEarningsData() {
+function extractAndProcessEarningsData(ds = pageDs) {
     try {
-        const parser = getParser(default_ds);
+        const parser = getParser(ds);
         if (parser) {
-            if (isDefined(parser.qtrData)) quarterlyData = parser.qtrData;
-            if (isDefined(parser.annualData)) annualData = parser.annualData;
+            if (isDefined(parser.qtrData) && parser.qtrData.length > 0) quarterlyData = parser.qtrData;
+            if (isDefined(parser.annualData) && parser.annualData.length > 0) annualData = parser.annualData;
         }
-        if (isDefined(overwrite_qtr_data)) quarterlyData = overwrite_qtr_data;
+        if (isDefined(overwrite_qtr_data) && overwrite_qtr_data.length > 0) {
+            quarterlyData = overwrite_qtr_data;
+        }
 
         calculateQuarterlyPerf(quarterlyData);
         fillAnnual(quarterlyData, annualData);
@@ -489,7 +589,9 @@ function fillAnnual(quarterlyData, annualData) {
             yearItem.eps = +yearItem.eps.toFixed(2);
             yearItem.rev = +yearItem.rev.toFixed(1);
             yearItem.qtrs4Year = qtrs4Year;
-            annualData.unshift(yearItem);
+            if (!annualData.some(existing => existing.year === year)) {
+                annualData.unshift(yearItem);
+            }
         }
         --year;
     }
@@ -527,7 +629,7 @@ function extractFundamentalData(response, results) {
         results.companyName = anchorNode ? anchorNode.textContent.trim() : "";
         results.companySite = anchorNode ? fixExternalLink(anchorNode.getAttribute("href") || "") : "";
 
-        // Query both new Finviz class a.quote-header_category and legacy .quote-links a
+        // Query Finviz category nodes
         const categoryNodes = Array.from(dom.querySelectorAll("a.quote-header_category, .quote-links a, a[href*='screener?v=111']"));
         const sectorNode = categoryNodes.find(a => (a.getAttribute("href") || "").includes("f=sec_")) || categoryNodes[0];
         const industryNode = categoryNodes.find(a => (a.getAttribute("href") || "").includes("f=ind_")) || categoryNodes[1];

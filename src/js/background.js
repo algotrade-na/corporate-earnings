@@ -1,10 +1,10 @@
-const SA_REGEX = /symbol\/([a-zA-Z0-9\.\-]+)\/earnings/;
-const ZA_REGEX = /stock\/research\/([a-zA-Z0-9\.\-]+)\/earnings-calendar/;
+const SA_REGEX = /symbol\/([a-zA-Z0-9\.\-]+)/;
+const ZA_REGEX = /stock\/(?:research|quote)\/([a-zA-Z0-9\.\-]+)/;
 const YF_REGEX = /quote\/([a-zA-Z0-9\.\-]+)/;
 
-const FUNDAMENTALS_URL = "aHR0cHM6Ly9maW52aXouY29tL3F1b3RlLmFzaHg/dD0=";
+const FUNDAMENTALS_URL = "aHR0cHM6Ly9maW52aXouY29tL3N0b2NrP3Q9";
 const FUNDAMENTALS_URL_PREFIX = "aHR0cHM6Ly9maW52aXouY29tLw==";
-const IMAGE_URL = "aHR0cHM6Ly9jaGFydHMyLmZpbnZpei5jb20vY2hhcnQuYXNoeD90PQ==";
+const IMAGE_URL = "aHR0cHM6Ly9jaGFydHMyLmZpbnZpei5jb20vY2hhcnQ/dD0=";
 const QUARTERLY_DATA_URL =
     "aHR0cHM6Ly93d3cuemFja3MuY29tL3N0b2NrL3Jlc2VhcmNoLyVzL2Vhcm5pbmdzLWNhbGVuZGFy";
 
@@ -16,21 +16,32 @@ const CHART_TYPE = {
 };
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-        if (!tabs || tabs.length === 0 || !tabs[0].url) {
-            sendResponse({ error: "No active tab URL found" });
-            return;
-        }
-        let url = tabs[0].url;
-        const symbol = getSymbol(url);
-        if (message.command === "fetch_fundamentals") {
-            fetchFundamentals(symbol, message.chart_type, sendResponse);
-        } else if (message.command === "fetch_quarterly_data") {
-            fetchQuarterlyData(symbol, sendResponse);
-        }
-    });
+    let symbol = message.symbol;
+    if (!symbol && sender.tab && sender.tab.url) {
+        symbol = getSymbol(sender.tab.url);
+    }
+
+    if (symbol) {
+        handleCommand(message, symbol, sendResponse);
+    } else {
+        chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+            let activeUrl = tabs && tabs.length > 0 && tabs[0].url ? tabs[0].url : "";
+            let s = getSymbol(activeUrl);
+            handleCommand(message, s, sendResponse);
+        });
+    }
     return true;
 });
+
+function handleCommand(message, symbol, sendResponse) {
+    if (message.command === "fetch_fundamentals") {
+        fetchFundamentals(symbol, message.chart_type, sendResponse);
+    } else if (message.command === "fetch_quarterly_data") {
+        fetchQuarterlyData(symbol, sendResponse);
+    } else {
+        sendResponse({ error: "Unknown command: " + message.command });
+    }
+}
 
 function fetchQuarterlyData(symbol, sendResponse) {
     if (!isDefined(symbol)) {
@@ -42,7 +53,13 @@ function fetchQuarterlyData(symbol, sendResponse) {
 
     const results = { symbol: symbol };
     let responseStatus = 0;
-    fetch(getQuarterlyDataUrl(symbol))
+    fetch(getQuarterlyDataUrl(symbol), {
+        headers: {
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Cache-Control": "no-cache",
+        }
+    })
         .then(function (response) {
             responseStatus = response.status;
             return response.text();
@@ -50,7 +67,7 @@ function fetchQuarterlyData(symbol, sendResponse) {
         .then(function (html) {
             if (responseStatus != 200) {
                 sendResponse({
-                    error: "failed to fetch fundamentals for symbol: " + symbol,
+                    error: "failed to fetch quarterly data for symbol: " + symbol + " status: " + responseStatus,
                 });
                 return;
             }
@@ -58,7 +75,7 @@ function fetchQuarterlyData(symbol, sendResponse) {
             sendResponse(results);
         })
         .catch(function (err) {
-            console.log("Failed to fetch page: ", err);
+            console.log("Failed to fetch quarterly data: ", err);
             sendResponse({
                 error: "failed to fetch quarterly data for symbol: " + symbol,
             });
@@ -79,7 +96,12 @@ function fetchFundamentals(symbol, chart_type, sendResponse) {
 
     const results = { symbol: symbol };
     let responseStatus = 0;
-    fetch(decode(FUNDAMENTALS_URL) + symbol)
+    fetch(decode(FUNDAMENTALS_URL) + symbol, {
+        headers: {
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+        }
+    })
         .then(function (response) {
             responseStatus = response.status;
             return response.text();
@@ -115,7 +137,7 @@ function fetchFundamentals(symbol, chart_type, sendResponse) {
             sendResponse(results);
         })
         .catch(function (err) {
-            console.log("Failed to fetch page: ", err);
+            console.log("Failed to fetch fundamentals: ", err);
             sendResponse({
                 error: "failed to fetch fundamentals for symbol: " + symbol,
             });
