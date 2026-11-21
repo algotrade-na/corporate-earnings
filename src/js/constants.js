@@ -321,6 +321,9 @@ const CSS = (showChart = false, show_earnings_surprise = false) => `
             width: 100%;
             min-width: 100%;
         }
+        #ht-chart-container.ht-chart-grid {
+            grid-template-columns: 1fr !important;
+        }
         #ht-rni-container {
             grid-template-columns: 1fr !important;
         }
@@ -403,17 +406,71 @@ const CSS = (showChart = false, show_earnings_surprise = false) => `
         font-weight: 700;
     }
 
+    /* Stock Charts Section: Dedicated 50/50 Cards */
     #ht-chart-container {
-        flex: 0 0 280px;
+        width: 100%;
+        margin: 0;
+        box-sizing: border-box;
+    }
+    #ht-chart-container.ht-chart-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        align-items: stretch;
+    }
+    #ht-chart-container.ht-chart-single {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
+    .ht-chart-card {
+        background: var(--card-bkg);
+        border: var(--border);
+        border-radius: 8px;
+        padding: 12px 14px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        box-sizing: border-box;
         display: flex;
         flex-direction: column;
-        gap: 12px;
     }
-    #ht-chart-weekly img, #ht-chart-daily img {
-        width: 100%;
-        border: var(--border);
+    .ht-chart-card .ht-section-heading {
+        margin: 0 0 10px 0;
+    }
+    .ht-chart-img-wrapper {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 220px;
+        background: var(--card-bkg-alt);
+        border: var(--border-subtle);
         border-radius: 6px;
+        padding: 10px;
+        overflow: hidden;
+    }
+    .ht-chart-img-wrapper img {
+        max-width: 100%;
+        width: auto;
+        height: auto;
+        max-height: 400px;
+        object-fit: contain;
+        border-radius: 4px;
+        border: var(--border);
+        box-shadow: 0 1px 6px rgba(0, 0, 0, 0.25);
         display: block;
+        margin: 0 auto;
+        image-rendering: -webkit-optimize-contrast;
+    }
+    .ht-chart-single .ht-chart-img-wrapper img {
+        max-width: 580px;
+        width: 100%;
+    }
+    .ht-no-chart {
+        color: var(--text-muted);
+        font-size: 12px;
+        font-style: italic;
+        padding: 24px 12px;
+        text-align: center;
     }
 
     /* News & Insiders Section: Equal 50/50 */
@@ -524,7 +581,48 @@ const HTML_EARNINGS_ONLY = (theme = "dark") => `
 </div>
 `;
 
-const HTML = (theme = "dark", showChart = false, show_earnings_surprise = false) => `
+const renderChartContainer = (chartType) => {
+    if (chartType == CHART_TYPE.BOTH) {
+        return `
+    <div id="ht-chart-container" class="ht-chart-grid">
+        <div id="ht-chart-weekly-card" class="ht-chart-card">
+            <div class="ht-section-heading">Weekly Chart</div>
+            <div id="ht-chart-weekly" class="ht-chart-img-wrapper">
+                <span class="ht-loadingmsg">Waiting for weekly chart</span>
+            </div>
+        </div>
+        <div id="ht-chart-daily-card" class="ht-chart-card">
+            <div class="ht-section-heading">Daily Chart</div>
+            <div id="ht-chart-daily" class="ht-chart-img-wrapper">
+                <span class="ht-loadingmsg">Waiting for daily chart</span>
+            </div>
+        </div>
+    </div>`;
+    } else if (chartType == CHART_TYPE.WEEKLY) {
+        return `
+    <div id="ht-chart-container" class="ht-chart-single">
+        <div id="ht-chart-weekly-card" class="ht-chart-card">
+            <div class="ht-section-heading">Weekly Chart</div>
+            <div id="ht-chart-weekly" class="ht-chart-img-wrapper">
+                <span class="ht-loadingmsg">Waiting for weekly chart</span>
+            </div>
+        </div>
+    </div>`;
+    } else if (chartType == CHART_TYPE.DAILY) {
+        return `
+    <div id="ht-chart-container" class="ht-chart-single">
+        <div id="ht-chart-daily-card" class="ht-chart-card">
+            <div class="ht-section-heading">Daily Chart</div>
+            <div id="ht-chart-daily" class="ht-chart-img-wrapper">
+                <span class="ht-loadingmsg">Waiting for daily chart</span>
+            </div>
+        </div>
+    </div>`;
+    }
+    return "";
+};
+
+const HTML = (theme = "dark", showChart = false, show_earnings_surprise = false, chartType = CHART_TYPE.NONE) => `
 <div id="ht-root-container"${theme === "dark" ? ' class="ht-dark-theme"' : ""}>
     <div id="ht-fundamentals-container" style="display: none;">
         <div id="ht-header-row">
@@ -568,8 +666,8 @@ const HTML = (theme = "dark", showChart = false, show_earnings_surprise = false)
             <div id="ht-earnings-yearly"><span id="ht-waiting-earnings" class="ht-loadingmsg">Waiting for earnings data</span></div>
             <div id="ht-earnings-quarterly"></div>
         </div>
-        ${showChart ? '<div id="ht-chart-container"><div id="ht-chart-weekly"></div><div id="ht-chart-daily"></div></div>' : ""}              
     </div>
+    ${showChart ? renderChartContainer(chartType) : ""}
     <div id="ht-rni-container">
         <div id="ht-news-cell">
             <div class="ht-section-heading">Recent News</div>

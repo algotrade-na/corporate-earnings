@@ -323,15 +323,15 @@ function pushFundamentalsData(found = true) {
 
     if (chart_type == CHART_TYPE.WEEKLY || chart_type == CHART_TYPE.BOTH) {
         let weekly = isDefined(fundamentals.weeklyChart)
-            ? `<img src="data:image/png;base64, ${fundamentals.weeklyChart}" alt="${fundamentals.ticker} chart"/>`
-            : "No weekly chart available";
+            ? `<img src="data:image/png;base64, ${fundamentals.weeklyChart}" alt="${fundamentals.ticker || ''} weekly chart"/>`
+            : '<div class="ht-no-chart">No weekly chart available</div>';
         const wElem = document.getElementById("ht-chart-weekly");
         if (wElem) wElem.innerHTML = weekly;
     }
     if (chart_type == CHART_TYPE.DAILY || chart_type == CHART_TYPE.BOTH) {
         let daily = isDefined(fundamentals.dailyChart)
-            ? `<img src="data:image/png;base64, ${fundamentals.dailyChart}" alt="${fundamentals.ticker} chart"/>`
-            : "No daily chart available";
+            ? `<img src="data:image/png;base64, ${fundamentals.dailyChart}" alt="${fundamentals.ticker || ''} daily chart"/>`
+            : '<div class="ht-no-chart">No daily chart available</div>';
         const dElem = document.getElementById("ht-chart-daily");
         if (dElem) dElem.innerHTML = daily;
     }
@@ -403,7 +403,7 @@ function insertHTML() {
     } else {
         const showChart =
             fetch_fundamental_data && chart_type != CHART_TYPE.NONE;
-        html = HTML(default_theme, showChart, show_earnings_surprise);
+        html = HTML(default_theme, showChart, show_earnings_surprise, chart_type);
     }
     bodyPrepend(html);
 }

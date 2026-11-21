@@ -179,8 +179,14 @@ async function fetchImages(symbol, chartType) {
         let data = await Promise.all(
             urls.map((url) =>
                 fetch(url)
-                    .then((response) => response.arrayBuffer())
-                    .then((buf) => arrayBufferToBase64(buf))
+                    .then((response) => {
+                        const ct = response.headers.get("content-type") || "";
+                        if (!response.ok || !ct.includes("image")) {
+                            return undefined;
+                        }
+                        return response.arrayBuffer().then((buf) => arrayBufferToBase64(buf));
+                    })
+                    .catch(() => undefined)
             )
         );
         return data;
