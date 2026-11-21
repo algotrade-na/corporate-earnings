@@ -410,6 +410,11 @@ function insertHTML() {
 
 function quarterlyToHtml(quarterlyData) {
     let html = '<table class="ht-earnings-table">';
+    if (show_earnings_surprise) {
+        html += '<colgroup><col style="width: 16%;"><col style="width: 12%;"><col style="width: 12%;"><col style="width: 12%;"><col style="width: 12%;"><col style="width: 12%;"><col style="width: 12%;"><col style="width: 12%;"></colgroup>';
+    } else {
+        html += '<colgroup><col style="width: 20%;"><col style="width: 16%;"><col style="width: 16%;"><col style="width: 16%;"><col style="width: 16%;"><col style="width: 16%;"></colgroup>';
+    }
     html += "<thead><tr>";
     html += "<td>Date</td>";
     html += "<td>Quarter</td><td>EPS</td><td>%Change</td>";
@@ -509,6 +514,7 @@ function quarterlyToHtml(quarterlyData) {
 
 function annualToHtml(annualData) {
     let html = '<table class="ht-earnings-table">';
+    html += '<colgroup><col style="width: 20%;"><col style="width: 20%;"><col style="width: 20%;"><col style="width: 20%;"><col style="width: 20%;"></colgroup>';
     html += "<thead><tr><td>Year</td><td>EPS</td><td>%Change</td><td>Revenue(Mil)</td><td>%Change</td></tr></thead><tbody>";
 
     if (!annualData || annualData.length == 0) {

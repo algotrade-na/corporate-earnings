@@ -98,7 +98,7 @@ const CSS = (showChart = false, show_earnings_surprise = false) => `
         --card-bkg: #181c27;
         --card-bkg-alt: #1e2230;
         --border: 1px solid #262b3a;
-        --border-subtle: 1px solid rgba(255, 255, 255, 0.06);
+        --border-subtle: 1px solid rgba(255, 255, 255, 0.07);
         --earnings-header-color: #202534;
         --earnings-bkg-color-even: #1a1e2b;
         --earnings-change-positive-color: #10b981;
@@ -111,16 +111,19 @@ const CSS = (showChart = false, show_earnings_surprise = false) => `
         width: 100%;
         max-width: 100%;
         box-sizing: border-box;
-        margin: 0 0 24px 0;
+        margin: 0 0 16px 0;
         border: var(--border);
         border-radius: 10px;
         color: var(--text-color);
         background: var(--bkg-color);
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-        padding: 16px 20px;
+        padding: 16px;
         box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
         font-size: 13px;
         line-height: 1.4;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
     }
     #ht-root-container.ht-dark-theme {
         --text-color: #f1f5f9;
@@ -129,7 +132,7 @@ const CSS = (showChart = false, show_earnings_surprise = false) => `
         --card-bkg: #181c27;
         --card-bkg-alt: #1e2230;
         --border: 1px solid #262b3a;
-        --border-subtle: 1px solid rgba(255, 255, 255, 0.06);
+        --border-subtle: 1px solid rgba(255, 255, 255, 0.07);
         --earnings-header-color: #202534;
         --earnings-bkg-color-even: #1a1e2b;
         --earnings-change-positive-color: #10b981;
@@ -144,7 +147,7 @@ const CSS = (showChart = false, show_earnings_surprise = false) => `
         --card-bkg: #ffffff;
         --card-bkg-alt: #f1f5f9;
         --border: 1px solid #e2e8f0;
-        --border-subtle: 1px solid rgba(0, 0, 0, 0.06);
+        --border-subtle: 1px solid rgba(0, 0, 0, 0.07);
         --earnings-header-color: #e2e8f0;
         --earnings-bkg-color-even: #f8fafc;
         --earnings-change-positive-color: #059669;
@@ -158,48 +161,33 @@ const CSS = (showChart = false, show_earnings_surprise = false) => `
         border-collapse: collapse;
         box-sizing: border-box;
     }
-    table#ht-fundamentals-container {
+    #ht-fundamentals-container {
         width: 100%;
-        border-collapse: separate;
-        border-spacing: 0;
-        margin: 0 0 16px 0;
+        box-sizing: border-box;
+        margin: 0;
         border: var(--border);
         border-radius: 8px;
         overflow: hidden;
         background: var(--card-bkg);
+        padding: 14px 16px;
         box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
     }
-    #ht-fundamentals-container tr {
-        border-bottom: var(--border);
-    }
-    #ht-fundamentals-container tr:last-child {
-        border-bottom: none;
-    }
-    #ht-fundamentals-container td {
-        padding: 6px 12px;
-        font-size: 12px;
-        border-right: var(--border);
-        border-bottom: var(--border);
-        vertical-align: middle;
-    }
-    #ht-fundamentals-container td:last-child {
-        border-right: none;
-    }
-    #ht-fundamentals-container .ht-fdata td:nth-child(odd) {
-        color: var(--text-muted);
-        font-weight: 500;
-        background: var(--card-bkg-alt);
-        width: 12%;
-    }
-    #ht-fundamentals-container .ht-fdata td:nth-child(even) {
-        color: var(--text-color);
-        font-weight: 600;
-        width: 13%;
+    #ht-header-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        padding-bottom: 8px;
+        border-bottom: var(--border-subtle);
+        gap: 16px;
     }
     #ht-company {
-        font-size: 16px;
+        font-size: 15px;
         font-weight: 700;
         color: var(--text-color);
+        line-height: 1.3;
     }
     #ht-company a {
         color: var(--link-color);
@@ -215,12 +203,14 @@ const CSS = (showChart = false, show_earnings_surprise = false) => `
     }
     #ht-pricevol {
         text-align: right;
-        font-size: 20px;
+        font-size: 18px;
         font-weight: 700;
         color: var(--text-color);
+        white-space: nowrap;
+        line-height: 1.2;
     }
     #ht-volume {
-        font-size: 12px;
+        font-size: 11px;
         font-weight: 400;
         color: var(--text-muted);
         display: block;
@@ -230,7 +220,7 @@ const CSS = (showChart = false, show_earnings_surprise = false) => `
         font-size: 12px;
         line-height: 1.5;
         color: var(--text-muted);
-        max-height: 48px;
+        max-height: 38px;
         overflow: hidden;
         text-overflow: ellipsis;
         display: -webkit-box;
@@ -241,6 +231,41 @@ const CSS = (showChart = false, show_earnings_surprise = false) => `
     #ht-description:hover {
         -webkit-line-clamp: unset;
         max-height: 400px;
+    }
+    #ht-fundamentals-grid {
+        width: 100%;
+        table-layout: fixed;
+        border-collapse: collapse;
+        border-spacing: 0;
+        font-size: 12px;
+    }
+    #ht-fundamentals-grid td {
+        padding: 5px 8px;
+        border-bottom: var(--border-subtle);
+        vertical-align: middle;
+    }
+    #ht-fundamentals-grid tr:last-child td {
+        border-bottom: none;
+    }
+    #ht-fundamentals-grid td:nth-child(1),
+    #ht-fundamentals-grid td:nth-child(3) {
+        color: var(--text-muted);
+        font-weight: 500;
+        text-align: left;
+    }
+    #ht-fundamentals-grid td:nth-child(2),
+    #ht-fundamentals-grid td:nth-child(4) {
+        color: var(--text-color);
+        font-weight: 600;
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+    }
+    #ht-fundamentals-grid td:nth-child(2) {
+        border-right: var(--border);
+        padding-right: 20px;
+    }
+    #ht-fundamentals-grid td:nth-child(3) {
+        padding-left: 20px;
     }
     #ht-fundamentals-earnings.learnings,
     #ht-fundamentals-adr.ladr,
@@ -253,29 +278,30 @@ const CSS = (showChart = false, show_earnings_surprise = false) => `
         font-weight: 700;
     }
 
-    /* MarketSmith Style: Annual on Left, Quarterly on Right */
+    /* MarketSmith Style: Equal 50/50 Layout for Annual and Quarterly */
     #ht-ec-container {
         display: flex;
         flex-direction: row;
-        gap: 20px;
-        align-items: flex-start;
+        gap: 16px;
+        align-items: stretch;
         width: 100%;
-        margin-bottom: 16px;
+        margin: 0;
     }
     #ht-earnings-container {
         display: flex;
         flex-direction: row;
-        gap: 20px;
-        align-items: flex-start;
-        flex: 1 1 auto;
+        gap: 16px;
+        align-items: stretch;
+        flex: 1 1 0;
+        width: 100%;
         min-width: 0;
     }
     #ht-earnings-yearly {
-        flex: 0 0 auto;
-        min-width: 300px;
+        flex: 1 1 0;
+        min-width: 0;
     }
     #ht-earnings-quarterly {
-        flex: 1 1 auto;
+        flex: 1 1 0;
         min-width: 0;
         overflow-x: auto;
     }
@@ -300,6 +326,7 @@ const CSS = (showChart = false, show_earnings_surprise = false) => `
         }
     }
     .ht-earnings-table {
+        table-layout: fixed;
         border-collapse: separate;
         border-spacing: 0;
         border: var(--border);
@@ -317,16 +344,17 @@ const CSS = (showChart = false, show_earnings_surprise = false) => `
         font-size: 11px;
         text-transform: uppercase;
         letter-spacing: 0.5px;
-        padding: 8px 10px;
+        padding: 8px 8px;
         border-bottom: var(--border);
         text-align: right;
+        white-space: nowrap;
     }
-    .ht-earnings-table thead tr td:first-child,
-    .ht-earnings-table thead tr td:nth-child(2) {
+    .ht-earnings-table thead tr td:first-child {
         text-align: left;
+        padding-left: 12px;
     }
     .ht-earnings-table tbody tr {
-        border-bottom: var(--border);
+        border-bottom: var(--border-subtle);
         transition: background 0.15s;
     }
     .ht-earnings-table tbody tr:last-child {
@@ -339,19 +367,23 @@ const CSS = (showChart = false, show_earnings_surprise = false) => `
         background-color: var(--card-bkg-alt);
     }
     .ht-earnings-table tbody tr td {
-        padding: 6px 10px;
+        padding: 6px 8px;
         text-align: right;
         color: var(--text-color);
         font-variant-numeric: tabular-nums;
         border-bottom: var(--border-subtle);
+        white-space: nowrap;
+    }
+    .ht-earnings-table tbody tr:last-child td {
+        border-bottom: none;
     }
     .ht-earnings-table tbody tr td:first-child {
         text-align: left;
+        padding-left: 12px;
         font-weight: 500;
         color: var(--text-muted);
-        white-space: nowrap;
     }
-    .ht-earnings-table tbody tr td:nth-child(2) {
+    #ht-earnings-quarterly .ht-earnings-table tbody tr td:nth-child(2) {
         text-align: left;
         font-weight: 600;
     }
@@ -384,13 +416,13 @@ const CSS = (showChart = false, show_earnings_surprise = false) => `
         display: block;
     }
 
-    /* News & Insiders Section */
+    /* News & Insiders Section: Equal 50/50 */
     #ht-rni-container {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 20px;
+        gap: 16px;
         width: 100%;
-        margin-top: 4px;
+        margin: 0;
     }
     #ht-news-cell, #ht-insiders-cell {
         background: var(--card-bkg);
@@ -494,35 +526,43 @@ const HTML_EARNINGS_ONLY = (theme = "dark") => `
 
 const HTML = (theme = "dark", showChart = false, show_earnings_surprise = false) => `
 <div id="ht-root-container"${theme === "dark" ? ' class="ht-dark-theme"' : ""}>
-    <table id="ht-fundamentals-container" style="display: none;">
-        <tr>
-            <td colspan="3"><span id="ht-company"></span></td>
-            <td title="Price / Volume" id="ht-pricevol"></td>
-        </tr>
-        <tr>
-            <td colspan="4"><div id="ht-description"></div></td>
-        </tr>
-        <tr class="ht-fdata">
-            <td title="Market capitalization">Mkt Cap</td><td id="ht-fundamentals-mktcap"></td>
-            <td title="Monthly volatility">ADR</td><td id="ht-fundamentals-adr"></td>
-        </tr>
-        <tr class="ht-fdata">
-            <td title="Shares float">Shares Float</td><td id="ht-fundamentals-float"></td>
-            <td title="Next earnings date">Next Earnings</td><td id="ht-fundamentals-earnings"></td>
-        </tr>
-        <tr class="ht-fdata">
-            <td title="Short interest shares">Short Float</td><td id="ht-fundamentals-shortfloat"></td>
-            <td title="Institutional ownership">Inst Own</td><td id="ht-fundamentals-instown"></td>
-        </tr>
-        <tr class="ht-fdata">
-            <td title="Short interest ratio">Days to cover</td><td id="ht-fundamentals-daystocover"></td>
-            <td title="Institutional transactions (3 month change in institutional ownership)">Inst Trans</td><td id="ht-fundamentals-instrans3mo"></td>
-        </tr>
-        <tr class="ht-fdata">
-            <td title="Average volume (3 months)">Avg Volume</td><td id="ht-fundamentals-avgvol"></td>
-            <td title="Relative volume">Rel Volume</td><td id="ht-fundamentals-relvol"></td>
-        </tr> 
-    </table>            
+    <div id="ht-fundamentals-container" style="display: none;">
+        <div id="ht-header-row">
+            <div id="ht-company"></div>
+            <div title="Price / Volume" id="ht-pricevol"></div>
+        </div>
+        <div id="ht-description"></div>
+        <table id="ht-fundamentals-grid">
+            <colgroup>
+                <col style="width: 18%;">
+                <col style="width: 32%;">
+                <col style="width: 18%;">
+                <col style="width: 32%;">
+            </colgroup>
+            <tbody>
+                <tr class="ht-fdata">
+                    <td title="Market capitalization">Mkt Cap</td><td id="ht-fundamentals-mktcap"></td>
+                    <td title="Monthly volatility">ADR</td><td id="ht-fundamentals-adr"></td>
+                </tr>
+                <tr class="ht-fdata">
+                    <td title="Shares float">Shares Float</td><td id="ht-fundamentals-float"></td>
+                    <td title="Next earnings date">Next Earnings</td><td id="ht-fundamentals-earnings"></td>
+                </tr>
+                <tr class="ht-fdata">
+                    <td title="Short interest shares">Short Float</td><td id="ht-fundamentals-shortfloat"></td>
+                    <td title="Institutional ownership">Inst Own</td><td id="ht-fundamentals-instown"></td>
+                </tr>
+                <tr class="ht-fdata">
+                    <td title="Short interest ratio">Days to cover</td><td id="ht-fundamentals-daystocover"></td>
+                    <td title="Institutional transactions (3 month change in institutional ownership)">Inst Trans</td><td id="ht-fundamentals-instrans3mo"></td>
+                </tr>
+                <tr class="ht-fdata">
+                    <td title="Average volume (3 months)">Avg Volume</td><td id="ht-fundamentals-avgvol"></td>
+                    <td title="Relative volume">Rel Volume</td><td id="ht-fundamentals-relvol"></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>            
     <div id="ht-ec-container">
         <div id="ht-earnings-container">
             <div id="ht-earnings-yearly"><span id="ht-waiting-earnings" class="ht-loadingmsg">Waiting for earnings data</span></div>

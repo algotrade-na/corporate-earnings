@@ -223,14 +223,18 @@ const hide = (element) => {
 };
 
 const show = (element) => {
-    if (element != null && element.style != null)
-        element.style.display = "table";
+    if (element != null && element.style != null) {
+        element.style.display = "";
+        if (element.style.display === "none" || (typeof window !== "undefined" && window.getComputedStyle && window.getComputedStyle(element).display === "none")) {
+            element.style.display = element.tagName === "TABLE" ? "table" : (element.id === "ht-fundamentals-container" ? "flex" : "block");
+        }
+    }
 };
 
 const toggle = (element) => {
     if (element != null && element.style != null) {
         if (element.style.display === "none") {
-            element.style.display = "table";
+            show(element);
         } else {
             element.style.display = "none";
         }
