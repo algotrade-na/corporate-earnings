@@ -299,11 +299,11 @@ const CSS = (showChart = false, show_earnings_surprise = false) => `
         min-width: 0;
     }
     #ht-earnings-yearly {
-        flex: 1 1 0;
+        flex: 38 1 0;
         min-width: 0;
     }
     #ht-earnings-quarterly {
-        flex: 1 1 0;
+        flex: 62 1 0;
         min-width: 0;
         overflow-x: auto;
     }
@@ -348,11 +348,14 @@ const CSS = (showChart = false, show_earnings_surprise = false) => `
         font-weight: 600;
         font-size: 11px;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
-        padding: 6px 6px;
+        letter-spacing: 0.3px;
+        padding: 6px 4px;
         border-bottom: var(--border);
         text-align: right;
         white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        box-sizing: border-box;
     }
     .ht-earnings-table thead tr td:first-child {
         text-align: left;
@@ -372,13 +375,14 @@ const CSS = (showChart = false, show_earnings_surprise = false) => `
         background-color: var(--card-bkg-alt);
     }
     .ht-earnings-table tbody tr td {
-        padding: 4px 6px;
+        padding: 4px 4px;
         text-align: right;
         color: var(--text-color);
         font-variant-numeric: tabular-nums;
         border-bottom: var(--border-subtle);
         white-space: nowrap;
         font-size: 11.5px;
+        box-sizing: border-box;
     }
     .ht-earnings-table tbody tr:last-child td {
         border-bottom: none;

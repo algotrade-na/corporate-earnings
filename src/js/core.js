@@ -411,19 +411,19 @@ function insertHTML() {
 function quarterlyToHtml(quarterlyData) {
     let html = '<table class="ht-earnings-table">';
     if (show_earnings_surprise) {
-        html += '<colgroup><col style="width: 16%;"><col style="width: 12%;"><col style="width: 12%;"><col style="width: 12%;"><col style="width: 12%;"><col style="width: 12%;"><col style="width: 12%;"><col style="width: 12%;"></colgroup>';
+        html += '<colgroup><col style="width: 14%;"><col style="width: 11%;"><col style="width: 10%;"><col style="width: 11%;"><col style="width: 12%;"><col style="width: 18%;"><col style="width: 12%;"><col style="width: 12%;"></colgroup>';
     } else {
-        html += '<colgroup><col style="width: 20%;"><col style="width: 16%;"><col style="width: 16%;"><col style="width: 16%;"><col style="width: 16%;"><col style="width: 16%;"></colgroup>';
+        html += '<colgroup><col style="width: 18%;"><col style="width: 14%;"><col style="width: 14%;"><col style="width: 16%;"><col style="width: 22%;"><col style="width: 16%;"></colgroup>';
     }
     html += "<thead><tr>";
     html += "<td>Date</td>";
-    html += "<td>Quarter</td><td>EPS</td><td>%Change</td>";
+    html += "<td>Qtr</td><td>EPS</td><td>%Chg</td>";
     if (show_earnings_surprise) {
-        html += "<td>%Surprise</td>";
+        html += "<td>%Surp</td>";
     }
-    html += "<td>Revenue(Mil)</td><td>%Change</td>";
+    html += "<td>Rev ($M)</td><td>%Chg</td>";
     if (show_earnings_surprise) {
-        html += "<td>%Surprise</td>";
+        html += "<td>%Surp</td>";
     }
     html += "</tr></thead><tbody>";
 
@@ -514,8 +514,8 @@ function quarterlyToHtml(quarterlyData) {
 
 function annualToHtml(annualData) {
     let html = '<table class="ht-earnings-table">';
-    html += '<colgroup><col style="width: 20%;"><col style="width: 20%;"><col style="width: 20%;"><col style="width: 20%;"><col style="width: 20%;"></colgroup>';
-    html += "<thead><tr><td>Year</td><td>EPS</td><td>%Change</td><td>Revenue(Mil)</td><td>%Change</td></tr></thead><tbody>";
+    html += '<colgroup><col style="width: 18%;"><col style="width: 18%;"><col style="width: 20%;"><col style="width: 24%;"><col style="width: 20%;"></colgroup>';
+    html += "<thead><tr><td>Year</td><td>EPS</td><td>%Chg</td><td>Rev ($M)</td><td>%Chg</td></tr></thead><tbody>";
 
     if (!annualData || annualData.length == 0) {
         html += '<tr><td colspan="5" style="text-align: center; padding: 24px 10px; color: var(--text-muted); font-style: italic;">No annual earnings data available</td></tr>';
