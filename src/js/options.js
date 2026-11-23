@@ -1,8 +1,8 @@
 //options
 var default_theme = "dark";
 var show_earnings_only = false;
-// chart type: 1=none, 2=weekly, 3=daily, 4=both
-var chart_type = 1;
+// chart type: 1=none, 2=weekly, 3=daily, 4=both, 5=tradingview
+var chart_type = 5;
 var show_earnings_surprise = true;
 var open_new_tab = false;
 var ms_style_output = true;
@@ -30,6 +30,7 @@ function restore_options() {
       if (isDefined(options.show_earnings_only))
         show_earnings_only = options.show_earnings_only;
       if (isDefined(options.chart_type)) chart_type = options.chart_type;
+      else chart_type = 5;
       if (isDefined(options.show_earnings_surprise))
         show_earnings_surprise = options.show_earnings_surprise;
       if (isDefined(options.open_new_tab)) open_new_tab = options.open_new_tab;

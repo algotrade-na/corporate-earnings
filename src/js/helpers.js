@@ -47,8 +47,31 @@ function getComparativeQuarterName(qtr) {
 
 function getDisplayQuarter(qtr) {
     if (!qtr || typeof qtr !== "string") return "-";
-    if (qtr.length < 6) return qtr;
-    return qtr.substr(0, 3) + "-" + qtr.substr(6);
+    qtr = qtr.trim();
+    if (/^[A-Za-z]{3}-\d{2}$/.test(qtr)) return qtr;
+
+    const shortMonths = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const alphaMatch = qtr.match(/([A-Za-z]+)[\s\/\-\.]*(\d{2,4})/);
+    if (alphaMatch) {
+        const mon = alphaMatch[1].substr(0, 3);
+        const yr = alphaMatch[2].length === 4 ? alphaMatch[2].substr(2) : alphaMatch[2];
+        const capMon = mon.charAt(0).toUpperCase() + mon.slice(1).toLowerCase();
+        return `${capMon}-${yr}`;
+    }
+
+    const numMatch = qtr.match(/(\d{1,2})[\/\-\.](\d{2,4})/);
+    if (numMatch) {
+        const idx = parseInt(numMatch[1], 10);
+        if (idx >= 1 && idx <= 12) {
+            const yr = numMatch[2].length === 4 ? numMatch[2].substr(2) : numMatch[2];
+            return `${shortMonths[idx]}-${yr}`;
+        }
+    }
+
+    if (qtr.length >= 6) {
+        return qtr.substr(0, 3) + "-" + qtr.substr(qtr.length - 2);
+    }
+    return qtr;
 }
 
 function revenueStringToFloat(revStr) {

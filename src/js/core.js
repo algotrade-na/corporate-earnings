@@ -1,6 +1,6 @@
 var fetch_fundamental_data = true;
 var show_earnings_only = false;
-var chart_type = CHART_TYPE.NONE;
+var chart_type = CHART_TYPE.TRADINGVIEW;
 var show_earnings_surprise = true;
 var default_ds = 1;
 var default_theme = "dark";
@@ -13,6 +13,8 @@ var fundamentals = {};
 
 let overwrite_qtr_data = undefined;
 let pageDs = 1;
+let currentBarTab = "quarterly";
+let currentTvInterval = "D";
 
 // Detect current site automatically
 function detectSiteDataSource(fallbackDs = 1) {
@@ -47,7 +49,13 @@ if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
                 show_earnings_only = options.show_earnings_only;
                 fetch_fundamental_data = !options.show_earnings_only;
             }
-            if (isDefined(options.chart_type)) chart_type = options.chart_type;
+            if (isDefined(options.chart_type) && options.chart_type != CHART_TYPE.NONE) {
+                chart_type = options.chart_type;
+            } else if (isDefined(options.chart_type) && options.chart_type == CHART_TYPE.NONE && options.show_earnings_only) {
+                chart_type = CHART_TYPE.NONE;
+            } else {
+                chart_type = CHART_TYPE.TRADINGVIEW;
+            }
             if (isDefined(options.show_earnings_surprise))
                 show_earnings_surprise = options.show_earnings_surprise;
             if (isDefined(options.default_ds)) default_ds = options.default_ds;
@@ -241,101 +249,368 @@ function waitForEl(el, callback, maxtries = false, interval = 200) {
     }, interval);
 }
 
+function renderSvgBarChart(items, isCurrency = false) {
+    if (!items || items.length === 0) {
+        return '<svg width="100%" height="130"><text x="50%" y="50%" text-anchor="middle" fill="#64748b" font-size="11">No data</text></svg>';
+    }
+
+    const validVals = items.filter(it => it && it.val !== null && !isNaN(it.val)).map(it => it.val);
+    if (validVals.length === 0) {
+        return '<svg width="100%" height="130"><text x="50%" y="50%" text-anchor="middle" fill="#64748b" font-size="11">No data</text></svg>';
+    }
+
+    const maxVal = Math.max(Math.max(...validVals), 0);
+    const minVal = Math.min(Math.min(...validVals), 0);
+
+    const svgW = 280;
+    const svgH = 130;
+    const padTop = 22;
+    const padBottom = 28;
+    const chartH = svgH - padTop - padBottom;
+
+    const valRange = (maxVal - minVal) > 0 ? (maxVal - minVal) : 1.0;
+    const zeroY = padTop + (maxVal / valRange) * chartH;
+
+    const n = items.length;
+    const barWidth = Math.max(Math.min(svgW / (n * 1.6), 24), 10);
+    const step = svgW / n;
+
+    let svg = `<svg viewBox="0 0 ${svgW} ${svgH}" width="100%" height="100%" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">`;
+    svg += `<line x1="0" y1="${zeroY.toFixed(1)}" x2="${svgW}" y2="${zeroY.toFixed(1)}" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>`;
+
+    for (let i = 0; i < n; i++) {
+        const item = items[i];
+        if (!item || item.val === null || isNaN(item.val)) continue;
+
+        const cx = i * step + step / 2;
+        const bx = cx - barWidth / 2;
+        const val = item.val;
+        const display = item.displayVal || val.toString();
+        const lbl = item.label || "";
+
+        let barH = (Math.abs(val) / valRange) * chartH;
+        if (barH < 2) barH = 2;
+
+        let by = 0;
+        let fill = "#38bdf8";
+        let ty = 0;
+
+        if (val >= 0) {
+            by = zeroY - barH;
+            fill = "#38bdf8";
+            ty = by - 4;
+        } else {
+            by = zeroY;
+            fill = "#f43f5e";
+            ty = by + barH + 11;
+        }
+
+        svg += `<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${barH.toFixed(1)}" rx="2" fill="${fill}" opacity="0.9"/>`;
+        svg += `<text x="${cx.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="middle" fill="#e2e8f0" font-size="9" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-weight="600">${display}</text>`;
+        svg += `<text x="${cx.toFixed(1)}" y="${svgH - 6}" text-anchor="middle" fill="#64748b" font-size="8.5" font-family="-apple-system, BlinkMacSystemFont, sans-serif" transform="rotate(-35, ${cx.toFixed(1)}, ${svgH - 6})">${lbl}</text>`;
+    }
+
+    svg += '</svg>';
+    return svg;
+}
+
+function updateEarningsBarCharts(barTab = "quarterly") {
+    currentBarTab = barTab;
+    const epsContainer = document.getElementById("ht-eps-bars-container");
+    const salesContainer = document.getElementById("ht-sales-bars-container");
+    const salesTitleRight = document.querySelector(".ht-bars-title-right");
+
+    let epsItems = [];
+    let salesItems = [];
+    let inBillions = false;
+
+    if (barTab === "quarterly") {
+        const qtrs = (quarterlyData && quarterlyData.length > 0)
+            ? quarterlyData.slice(Math.max(0, quarterlyData.length - 8))
+            : [];
+
+        const maxSales = Math.max(...qtrs.map(q => (q && q.rev && isDefined(q.rev.rev)) ? q.rev.rev : 0), 0);
+        inBillions = maxSales >= 1000;
+
+        qtrs.forEach(q => {
+            if (!q) return;
+            const qtrLbl = getDisplayQuarter(q.name);
+
+            let epsVal = (q.eps && isDefined(q.eps.eps)) ? q.eps.eps : null;
+            let epsDisplay = epsVal !== null ? epsVal.toString() : "-";
+            epsItems.push({ label: qtrLbl, val: epsVal, displayVal: epsDisplay });
+
+            let revVal = (q.rev && isDefined(q.rev.rev)) ? q.rev.rev : null;
+            let revDisplay = "-";
+            let chartVal = revVal;
+            if (revVal !== null) {
+                if (inBillions) {
+                    chartVal = +(revVal / 1000).toFixed(2);
+                    revDisplay = chartVal.toString();
+                } else {
+                    revDisplay = numberWithCommas(revVal);
+                }
+            }
+            salesItems.push({ label: qtrLbl, val: chartVal, displayVal: revDisplay });
+        });
+    } else {
+        const years = (annualData && annualData.length > 0)
+            ? annualData.slice(Math.max(0, annualData.length - 8))
+            : [];
+
+        const maxSales = Math.max(...years.map(y => (y && isDefined(y.rev)) ? y.rev : 0), 0);
+        inBillions = maxSales >= 1000;
+
+        years.forEach(y => {
+            if (!y) return;
+            const yrLbl = (y.name || y.year || "").toString().replace("*", "");
+
+            let epsVal = isDefined(y.eps) ? parseFloat(y.eps) : null;
+            let epsDisplay = epsVal !== null && !isNaN(epsVal) ? epsVal.toFixed(2) : "-";
+            epsItems.push({ label: yrLbl, val: isNaN(epsVal) ? null : epsVal, displayVal: epsDisplay });
+
+            let revVal = isDefined(y.rev) ? parseFloat(y.rev) : null;
+            let revDisplay = "-";
+            let chartVal = revVal;
+            if (revVal !== null && !isNaN(revVal)) {
+                if (inBillions) {
+                    chartVal = +(revVal / 1000).toFixed(2);
+                    revDisplay = chartVal.toString();
+                } else {
+                    revDisplay = numberWithCommas(revVal);
+                }
+            }
+            salesItems.push({ label: yrLbl, val: isNaN(chartVal) ? null : chartVal, displayVal: revDisplay });
+        });
+    }
+
+    if (salesTitleRight) {
+        salesTitleRight.textContent = inBillions ? "Sales (B)" : "Sales ($M)";
+    }
+
+    if (epsContainer) {
+        epsContainer.innerHTML = renderSvgBarChart(epsItems, false);
+    }
+    if (salesContainer) {
+        salesContainer.innerHTML = renderSvgBarChart(salesItems, true);
+    }
+}
+
+function renderTradingViewChart(symbol, interval = currentTvInterval) {
+    if (!symbol) {
+        symbol = fundamentals.ticker || getSymbol(window.location.href);
+    }
+    if (!symbol) return;
+
+    currentTvInterval = interval;
+    const cleanSym = symbol.toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+    const displayElem = document.getElementById("ht-tv-symbol-display");
+    if (displayElem) {
+        displayElem.textContent = `${cleanSym} · TradingView Chart`;
+    }
+
+    const linkElem = document.getElementById("ht-tv-external-link");
+    if (linkElem) {
+        linkElem.href = `https://www.tradingview.com/symbols/${cleanSym}/`;
+    }
+
+    const wrapper = document.getElementById("ht-tv-iframe-wrapper");
+    if (wrapper) {
+        const existingIframe = document.getElementById("ht-tv-iframe");
+        const tvUrl = `https://s.tradingview.com/widgetembed/?symbol=${cleanSym}&interval=${interval}&symboledit=1&saveimage=1&toolbarbg=0b0e14&theme=dark&style=1&timezone=exchange&withdateranges=1&hideideas=1&studies=[]`;
+
+        if (existingIframe && existingIframe.getAttribute("data-symbol") === cleanSym && existingIframe.getAttribute("data-interval") === interval) {
+            return;
+        }
+
+        wrapper.innerHTML = `<iframe id="ht-tv-iframe" data-symbol="${cleanSym}" data-interval="${interval}" src="${tvUrl}" frameborder="0" allowtransparency="true" scrolling="no" style="width: 100%; height: 100%; min-height: 550px; border: none; display: block;"></iframe>`;
+    }
+}
+
+function attachEventHandlers() {
+    // Deep-dive tabs
+    const tabBtns = document.querySelectorAll(".ht-tab-btn");
+    tabBtns.forEach(btn => {
+        btn.onclick = function () {
+            tabBtns.forEach(b => b.classList.remove("active"));
+            this.classList.add("active");
+            const target = this.getAttribute("data-tab");
+            document.querySelectorAll(".ht-tab-content").forEach(c => c.style.display = "none");
+            const activeContent = document.getElementById("ht-tab-" + target);
+            if (activeContent) activeContent.style.display = "block";
+        };
+    });
+
+    // Bar chart tabs
+    const barTabs = document.querySelectorAll(".ht-bar-tab");
+    barTabs.forEach(tab => {
+        tab.onclick = function () {
+            barTabs.forEach(t => t.classList.remove("active"));
+            this.classList.add("active");
+            const bartab = this.getAttribute("data-bartab") || "quarterly";
+            updateEarningsBarCharts(bartab);
+        };
+    });
+
+    // TradingView timeframe buttons
+    const tfBtns = document.querySelectorAll(".ht-tf-btn");
+    tfBtns.forEach(btn => {
+        btn.onclick = function () {
+            tfBtns.forEach(b => b.classList.remove("active"));
+            this.classList.add("active");
+            const interval = this.getAttribute("data-interval") || "D";
+            renderTradingViewChart(null, interval);
+        };
+    });
+
+    // Description toggle
+    const toggle = document.getElementById("ht-desc-toggle");
+    const desc = document.getElementById("ht-description");
+    if (toggle && desc) {
+        toggle.onclick = function () {
+            if (desc.classList.contains("expanded")) {
+                desc.classList.remove("expanded");
+                toggle.textContent = "▾";
+                toggle.title = "Expand description";
+            } else {
+                desc.classList.add("expanded");
+                toggle.textContent = "▴";
+                toggle.title = "Collapse description";
+            }
+        };
+    }
+}
+
 function pushFundamentalsData(found = true) {
     if (!found) return;
     if (!isDefined(fundamentals.ticker) || fundamentals.ticker === "") return;
 
-    let companyHtml = "";
-    if (isDefined(fundamentals.companySite))
-        companyHtml = `<a id="ht-company-link" href="${fundamentals.companySite}" target="_blank"><b>${fundamentals.companyName || ''}</b></a>`;
-    else companyHtml = `<b>${fundamentals.companyName || ''}</b>`;
+    // Profile Card Header
+    const tickerBadge = document.getElementById("ht-ticker-badge");
+    if (tickerBadge) tickerBadge.textContent = fundamentals.ticker || "-";
 
-    companyHtml += ` <span id="ht-ticker">(${fundamentals.ticker || ''})</span> - 
-                    ${fundamentals.sector || '-'} | ${fundamentals.industry || '-'} | ${fundamentals.country || '-'}`;
+    const compNameElem = document.getElementById("ht-company-name");
+    if (compNameElem) {
+        if (fundamentals.companySite) {
+            compNameElem.innerHTML = `<a href="${fundamentals.companySite}" target="_blank" style="color: inherit; text-decoration: none;">${fundamentals.companyName || ''}</a>`;
+        } else {
+            compNameElem.textContent = fundamentals.companyName || "";
+        }
+    }
 
-    const compElem = document.getElementById("ht-company");
-    if (compElem) compElem.innerHTML = companyHtml;
-    
-    const priceVolElem = document.getElementById("ht-pricevol");
-    if (priceVolElem) priceVolElem.innerHTML = `\$${fundamentals.price || '-'}</br><span id="ht-volume">Vol: ${fundamentals.volume || '-'}</span>`;
-    
+    const priceElem = document.getElementById("ht-current-price");
+    if (priceElem) priceElem.textContent = fundamentals.price ? `$${fundamentals.price}` : "-";
+
+    const chgElem = document.getElementById("ht-price-change");
+    if (chgElem) {
+        const chg = fundamentals.change || "-";
+        chgElem.textContent = chg;
+        chgElem.className = "";
+        if (chg.startsWith("+")) chgElem.classList.add("pos");
+        else if (chg.startsWith("-")) chgElem.classList.add("neg");
+    }
+
+    // Pills
+    const pillsElem = document.getElementById("ht-tag-pills");
+    if (pillsElem) {
+        let pills = [];
+        if (fundamentals.industry && fundamentals.industry !== "-") pills.push(fundamentals.industry);
+        if (fundamentals.sector && fundamentals.sector !== "-") pills.push(fundamentals.sector);
+        if (fundamentals.country && fundamentals.country !== "-") pills.push(fundamentals.country);
+        if (fundamentals.mktcap && fundamentals.mktcap !== "-") pills.push(`${fundamentals.mktcap} Cap`);
+        pillsElem.innerHTML = pills.map(p => `<span class="ht-pill">${p}</span>`).join("");
+    }
+
+    // Sector Line
+    const secElem = document.getElementById("ht-sector-line");
+    if (secElem) {
+        let secParts = [];
+        if (fundamentals.sector && fundamentals.sector !== "-") secParts.push(fundamentals.sector);
+        if (fundamentals.industry && fundamentals.industry !== "-") secParts.push(fundamentals.industry);
+        if (fundamentals.country && fundamentals.country !== "-") secParts.push(fundamentals.country);
+        if (fundamentals.mktcap && fundamentals.mktcap !== "-") secParts.push(`Mkt cap ${fundamentals.mktcap}`);
+        secElem.textContent = secParts.join(" | ") || "-";
+    }
+
+    // Description
     const descElem = document.getElementById("ht-description");
-    if (descElem) descElem.innerHTML = fundamentals.description || "";
-    
-    const mktElem = document.getElementById("ht-fundamentals-mktcap");
-    if (mktElem) mktElem.innerHTML = fundamentals.mktcap || "-";
-    
-    const adrElem = document.getElementById("ht-fundamentals-adr");
-    if (adrElem) {
-        adrElem.innerHTML = fundamentals.adr || "-";
-        if (isAdrLow(fundamentals.adr)) adrElem.classList.add("ladr");
+    if (descElem) {
+        descElem.textContent = fundamentals.description || "No company description available.";
     }
 
-    const floatElem = document.getElementById("ht-fundamentals-float");
-    if (floatElem) floatElem.innerHTML = fundamentals.float || "-";
-
-    const earnElem = document.getElementById("ht-fundamentals-earnings");
-    if (earnElem) {
-        earnElem.innerHTML = fundamentals.earnings || "-";
-        if (isEarningsDateClose(fundamentals.earnings, fundamentals.daysToEarnings)) {
-            earnElem.classList.add("learnings");
+    // 3-Column Metrics Grid
+    const setMetric = (id, val, addClass) => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.textContent = val || "-";
+            if (addClass) el.className = `ht-m-val ${addClass}`;
         }
+    };
+
+    let earnDisplay = fundamentals.earnings || "-";
+    if (fundamentals.daysToEarnings && earnDisplay !== "-") {
+        earnDisplay += ` · ${fundamentals.daysToEarnings}d`;
     }
+    setMetric("ht-m-earnings", earnDisplay, isEarningsDateClose(fundamentals.earnings, fundamentals.daysToEarnings) ? "learnings" : "");
+    setMetric("ht-m-adr", fundamentals.adr, isAdrLow(fundamentals.adr) ? "ladr" : "");
+    setMetric("ht-m-atr", fundamentals.atr);
+    setMetric("ht-m-sma", (fundamentals.sma50 || "-") + " / " + (fundamentals.sma200 || "-"));
+    setMetric("ht-m-perf", (fundamentals.perfMonth || "-") + " / " + (fundamentals.perfQuarter || "-"));
 
-    const shortElem = document.getElementById("ht-fundamentals-shortfloat");
-    if (shortElem) {
-        shortElem.innerHTML = fundamentals.shorts || "-";
-        if (isShortInterestHigh(fundamentals.shorts)) shortElem.classList.add("hshorts");
-    }
+    setMetric("ht-m-relvol", fundamentals.relvolume ? (fundamentals.relvolume.toString().endsWith("x") ? fundamentals.relvolume : `${fundamentals.relvolume}x`) : "-");
+    setMetric("ht-m-vol", fundamentals.volume);
+    setMetric("ht-m-avgvol", fundamentals.avgvolume ? `${fundamentals.avgvolume}/d` : "-");
+    setMetric("ht-m-52w", fundamentals.range52w);
+    setMetric("ht-m-mktcap", fundamentals.mktcap);
 
-    const instElem = document.getElementById("ht-fundamentals-instown");
-    if (instElem) instElem.innerHTML = fundamentals.instown || "-";
+    setMetric("ht-m-float", fundamentals.float);
+    setMetric("ht-m-short", fundamentals.shorts, isShortInterestHigh(fundamentals.shorts) ? "hshorts" : "");
+    setMetric("ht-m-dtc", fundamentals.daystocover);
+    setMetric("ht-m-pe", fundamentals.pe);
+    setMetric("ht-m-ps", fundamentals.ps);
 
-    const dtcElem = document.getElementById("ht-fundamentals-daystocover");
-    if (dtcElem) dtcElem.innerHTML = fundamentals.daystocover || "-";
+    // Deep-Dive: Profitability Tab
+    const setProf = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = val || "-";
+    };
+    setProf("ht-prof-gross", fundamentals.grossMargin);
+    setProf("ht-prof-oper", fundamentals.operMargin);
+    setProf("ht-prof-net", fundamentals.profitMargin);
+    setProf("ht-prof-roe", fundamentals.roe);
+    setProf("ht-prof-roa", fundamentals.roa);
+    setProf("ht-prof-ps", fundamentals.ps);
 
-    const instChangeElem = document.getElementById("ht-fundamentals-instrans3mo");
-    if (instChangeElem) {
-        instChangeElem.innerHTML = fundamentals.instchange || "-";
-        if (isHighInstitutionalOwnershipChange(fundamentals.instchange)) {
-            instChangeElem.classList.add("hinstchange");
-        }
-    }
+    setProf("ht-prof-roi", fundamentals.roi);
+    setProf("ht-prof-fwdpe", fundamentals.fwdPe);
+    setProf("ht-prof-dtc", fundamentals.daystocover);
+    setProf("ht-prof-instown", fundamentals.instown);
 
-    const avgVolElem = document.getElementById("ht-fundamentals-avgvol");
-    if (avgVolElem) avgVolElem.innerHTML = fundamentals.avgvolume || "-";
+    // Deep-Dive: Institutions Tab
+    setProf("ht-inst-own-val", fundamentals.instown);
+    setProf("ht-inst-trans-val", fundamentals.instchange);
+    setProf("ht-inst-float-val", fundamentals.float);
+    setProf("ht-inst-short-val", fundamentals.shorts);
+    setProf("ht-inst-dtc-val", fundamentals.daystocover);
 
-    const relVolElem = document.getElementById("ht-fundamentals-relvol");
-    if (relVolElem) relVolElem.innerHTML = fundamentals.relvolume || "-";
-
-    const ratingsElem = document.getElementById("ht-ratings-cell");
-    if (ratingsElem) ratingsElem.innerHTML = fundamentals.ratingsHtml || "";
-
-    const newsElem = document.getElementById("ht-news-cell");
-    if (newsElem) {
-        newsElem.innerHTML = '<div class="ht-section-heading">Recent News</div>' + (fundamentals.newsHtml || "No news");
-    }
-
+    // Deep-Dive: Insiders Tab
     const insElem = document.getElementById("ht-insiders-cell");
     if (insElem) {
-        insElem.innerHTML = '<div class="ht-section-heading">Insider Transactions</div>' + (fundamentals.insidersHtml || "No insider transactions");
+        insElem.innerHTML = fundamentals.insidersHtml || "No insider transactions";
     }
 
-    if (chart_type == CHART_TYPE.WEEKLY || chart_type == CHART_TYPE.BOTH) {
-        let weekly = isDefined(fundamentals.weeklyChart)
-            ? `<img src="data:image/png;base64, ${fundamentals.weeklyChart}" alt="${fundamentals.ticker || ''} weekly chart"/>`
-            : '<div class="ht-no-chart">No weekly chart available</div>';
-        const wElem = document.getElementById("ht-chart-weekly");
-        if (wElem) wElem.innerHTML = weekly;
+    // Deep-Dive: News Tab
+    const newsElem = document.getElementById("ht-news-cell");
+    if (newsElem) {
+        newsElem.innerHTML = fundamentals.newsHtml || "No news";
     }
-    if (chart_type == CHART_TYPE.DAILY || chart_type == CHART_TYPE.BOTH) {
-        let daily = isDefined(fundamentals.dailyChart)
-            ? `<img src="data:image/png;base64, ${fundamentals.dailyChart}" alt="${fundamentals.ticker || ''} daily chart"/>`
-            : '<div class="ht-no-chart">No daily chart available</div>';
-        const dElem = document.getElementById("ht-chart-daily");
-        if (dElem) dElem.innerHTML = daily;
-    }
-    show(document.getElementById("ht-fundamentals-container"));
+
+    // Event handlers
+    attachEventHandlers();
+
+    // Render TradingView Chart
+    renderTradingViewChart(fundamentals.ticker || getSymbol(window.location.href));
 }
 
 function displayEarnings(isContains, dsToUse = pageDs) {
@@ -379,6 +654,10 @@ function pushEarningsData() {
     if (yElem) yElem.innerHTML = annualToHtml(annualData);
     const qElem = document.getElementById("ht-earnings-quarterly");
     if (qElem) qElem.innerHTML = quarterlyToHtml(quarterlyData);
+
+    updateEarningsBarCharts(currentBarTab);
+    attachEventHandlers();
+    renderTradingViewChart(fundamentals.ticker || getSymbol(window.location.href));
 }
 
 function displayWaiting() {
@@ -409,34 +688,29 @@ function insertHTML() {
 }
 
 function quarterlyToHtml(quarterlyData) {
+    if (!quarterlyData || quarterlyData.length == 0) {
+        return `<table class="ht-earnings-table"><tbody><tr><td colspan="${show_earnings_surprise ? 7 : 5}" style="text-align: center; padding: 24px 10px; color: var(--text-muted); font-style: italic;">No quarterly earnings data available</td></tr></tbody></table>`;
+    }
+
+    const displayedQtrs = limit_num_qtr
+        ? quarterlyData.slice(Math.max(0, quarterlyData.length - 8))
+        : quarterlyData;
+
+    const maxSales = Math.max(...displayedQtrs.map(q => (q && q.rev && isDefined(q.rev.rev)) ? q.rev.rev : 0), 0);
+    const inBillions = maxSales >= 1000;
+    const salesColHeader = inBillions ? "SALES(B)" : "SALES ($M)";
+
     let html = '<table class="ht-earnings-table">';
     if (show_earnings_surprise) {
-        html += '<colgroup><col style="width: 14%;"><col style="width: 11%;"><col style="width: 10%;"><col style="width: 11%;"><col style="width: 12%;"><col style="width: 18%;"><col style="width: 12%;"><col style="width: 12%;"></colgroup>';
+        html += '<colgroup><col style="width: 16%;"><col style="width: 13%;"><col style="width: 13%;"><col style="width: 14%;"><col style="width: 16%;"><col style="width: 14%;"><col style="width: 14%;"></colgroup>';
+        html += `<thead><tr><td>QUARTER</td><td>EPS</td><td>%CHG</td><td>SURP</td><td>${salesColHeader}</td><td>%CHG</td><td>SURP</td></tr></thead><tbody>`;
     } else {
-        html += '<colgroup><col style="width: 18%;"><col style="width: 14%;"><col style="width: 14%;"><col style="width: 16%;"><col style="width: 22%;"><col style="width: 16%;"></colgroup>';
-    }
-    html += "<thead><tr>";
-    html += "<td>Date</td>";
-    html += "<td>Qtr</td><td>EPS</td><td>%Chg</td>";
-    if (show_earnings_surprise) {
-        html += "<td>%Surp</td>";
-    }
-    html += "<td>Rev ($M)</td><td>%Chg</td>";
-    if (show_earnings_surprise) {
-        html += "<td>%Surp</td>";
-    }
-    html += "</tr></thead><tbody>";
-
-    if (!quarterlyData || quarterlyData.length == 0) {
-        html += `<tr><td colspan="${show_earnings_surprise ? 8 : 6}" style="text-align: center; padding: 24px 10px; color: var(--text-muted); font-style: italic;">No quarterly earnings data available</td></tr>`;
-        html += "</tbody></table>";
-        return html;
+        html += '<colgroup><col style="width: 20%;"><col style="width: 20%;"><col style="width: 20%;"><col style="width: 20%;"><col style="width: 20%;"></colgroup>';
+        html += `<thead><tr><td>QUARTER</td><td>EPS</td><td>%CHG</td><td>${salesColHeader}</td><td>%CHG</td></tr></thead><tbody>`;
     }
 
-    quarterlyData.forEach(function (item, index) {
-        if (limit_num_qtr == true && index < quarterlyData.length - 8) {
-            return;
-        }
+    displayedQtrs.forEach(function (item) {
+        if (!item) return;
 
         let epsPerf = "-";
         if (isDefined(item.eps) && isDefined(item.eps.perf)) {
@@ -493,18 +767,27 @@ function quarterlyToHtml(quarterlyData) {
                 surpriseRevPerf = surpriseRevPerf + "%";
             }
         }
-        html += "<tr>";
-        html += "<td>" + (item.date || '-') + "</td>";
-        html += '<td style="white-space: nowrap;">' + getDisplayQuarter(item.name) + "</td>";
-        html += "<td>" + (item.eps && isDefined(item.eps.eps) ? item.eps.eps : '-') + "</td>";
-        html += '<td class="' + getHighlightClass4Change(item.eps ? item.eps.perf : undefined, epsPerf) + '">' + epsPerf + "</td>";
-        if (show_earnings_surprise) {
-            html += '<td class="' + getHighlightClass4Surprise(item.eps ? item.eps.surprisePerf : undefined, surpriseEpsPerf) + '">' + surpriseEpsPerf + "</td>";
+
+        let salesDisplay = "-";
+        if (item.rev && isDefined(item.rev.rev)) {
+            salesDisplay = inBillions
+                ? (item.rev.rev / 1000).toFixed(2)
+                : numberWithCommas(item.rev.rev);
         }
-        html += "<td>" + (item.rev && isDefined(item.rev.rev) ? numberWithCommas(item.rev.rev) : '-') + "</td>";
-        html += '<td class="' + getHighlightClass4Change(item.rev ? item.rev.perf : undefined, revPerf) + '">' + revPerf + "</td>";
+
+        const dateTooltip = item.date ? ` title="Reported: ${item.date}"` : "";
+
+        html += "<tr>";
+        html += `<td${dateTooltip}>${getDisplayQuarter(item.name)}</td>`;
+        html += `<td>${item.eps && isDefined(item.eps.eps) ? item.eps.eps : '-'}</td>`;
+        html += `<td class="${getHighlightClass4Change(item.eps ? item.eps.perf : undefined, epsPerf)}">${epsPerf}</td>`;
         if (show_earnings_surprise) {
-            html += '<td class="' + getHighlightClass4Surprise(item.rev ? item.rev.surprisePerf : undefined, surpriseRevPerf) + '">' + surpriseRevPerf + "</td>";
+            html += `<td class="${getHighlightClass4Surprise(item.eps ? item.eps.surprisePerf : undefined, surpriseEpsPerf)}">${surpriseEpsPerf}</td>`;
+        }
+        html += `<td${dateTooltip}>${salesDisplay}</td>`;
+        html += `<td class="${getHighlightClass4Change(item.rev ? item.rev.perf : undefined, revPerf)}">${revPerf}</td>`;
+        if (show_earnings_surprise) {
+            html += `<td class="${getHighlightClass4Surprise(item.rev ? item.rev.surprisePerf : undefined, surpriseRevPerf)}">${surpriseRevPerf}</td>`;
         }
         html += "</tr>";
     });
@@ -513,19 +796,27 @@ function quarterlyToHtml(quarterlyData) {
 }
 
 function annualToHtml(annualData) {
-    let html = '<table class="ht-earnings-table">';
-    html += '<colgroup><col style="width: 18%;"><col style="width: 18%;"><col style="width: 20%;"><col style="width: 24%;"><col style="width: 20%;"></colgroup>';
-    html += "<thead><tr><td>Year</td><td>EPS</td><td>%Chg</td><td>Rev ($M)</td><td>%Chg</td></tr></thead><tbody>";
-
     if (!annualData || annualData.length == 0) {
-        html += '<tr><td colspan="5" style="text-align: center; padding: 24px 10px; color: var(--text-muted); font-style: italic;">No annual earnings data available</td></tr>';
-        html += "</tbody></table>";
-        return html;
+        return '<table class="ht-earnings-table"><tbody><tr><td colspan="5" style="text-align: center; padding: 24px 10px; color: var(--text-muted); font-style: italic;">No annual earnings data available</td></tr></tbody></table>';
     }
 
-    annualData.forEach(function (item, index) {
+    const maxSales = Math.max(...annualData.map(y => (y && isDefined(y.rev)) ? y.rev : 0), 0);
+    const inBillions = maxSales >= 1000;
+    const salesColHeader = inBillions ? "SALES(B)" : "SALES ($M)";
+
+    let html = '<table class="ht-earnings-table">';
+    html += '<colgroup><col style="width: 24%;"><col style="width: 18%;"><col style="width: 20%;"><col style="width: 20%;"><col style="width: 18%;"></colgroup>';
+    html += `<thead><tr><td>FISCAL YEAR</td><td>EPS</td><td>%CHG</td><td>${salesColHeader}</td><td>%CHG</td></tr></thead><tbody>`;
+
+    annualData.forEach(function (item) {
+        if (!item) return;
         let yearlyEps = isDefined(item.eps) ? item.eps.toString() : "-";
-        let yearlyRev = isDefined(item.rev) ? item.rev.toString() : "-";
+        let yearlyRev = "-";
+        if (isDefined(item.rev)) {
+            yearlyRev = inBillions
+                ? (item.rev / 1000).toFixed(2)
+                : numberWithCommas(item.rev);
+        }
         let epsPerf = "-";
         if (isDefined(item.epsPerf)) {
             epsPerf = item.epsPerf > 0 ? "+" + item.epsPerf : item.epsPerf;
@@ -541,7 +832,7 @@ function annualToHtml(annualData) {
         html += `<tr><td ${isEst ? 'title="Estimated"' : ''}>${item.name || '-'}</td>`;
         html += `<td ${isEst ? 'title="Estimated"' : ''}>${yearlyEps}</td>`;
         html += `<td ${isEst ? 'title="Estimated"' : ''} class="${getHighlightClass4Change(item.epsPerf, epsPerf)}">${epsPerf}</td>`;
-        html += `<td ${isEst ? 'title="Estimated"' : ''}>${numberWithCommas(yearlyRev)}</td>`;
+        html += `<td ${isEst ? 'title="Estimated"' : ''}>${yearlyRev}</td>`;
         html += `<td ${isEst ? 'title="Estimated"' : ''} class="${getHighlightClass4Change(item.revPerf, revPerf)}">${revPerf}</td></tr>`;
     });
     html += "</tbody></table>";
@@ -699,6 +990,26 @@ function extractFundamentalData(response, results) {
         results.avgvolume = getSiblingText(tds, "Avg Volume");
         results.price = getSiblingText(tds, "Price");
         results.volume = getSiblingText(tds, "Volume");
+
+        // Expanded fundamentals for redesigned overview
+        results.change = getSiblingText(tds, "Change");
+        results.pe = getSiblingText(tds, "P/E");
+        results.fwdPe = getSiblingText(tds, "Forward P/E");
+        results.ps = getSiblingText(tds, "P/S");
+        let atrVal = getSiblingText(tds, "ATR");
+        if (!atrVal || atrVal === "-") atrVal = getSiblingText(tds, "ATR (14)");
+        results.atr = atrVal;
+        results.range52w = getSiblingText(tds, "52W Range");
+        results.sma50 = getSiblingText(tds, "SMA50");
+        results.sma200 = getSiblingText(tds, "SMA200");
+        results.perfMonth = getSiblingText(tds, "Perf Month");
+        results.perfQuarter = getSiblingText(tds, "Perf Quarter");
+        results.grossMargin = getSiblingText(tds, "Gross Margin");
+        results.operMargin = getSiblingText(tds, "Oper. Margin");
+        results.profitMargin = getSiblingText(tds, "Profit Margin");
+        results.roe = getSiblingText(tds, "ROE");
+        results.roa = getSiblingText(tds, "ROA");
+        results.roi = getSiblingText(tds, "ROI");
 
         const profileNode = dom.querySelector(".fullview-profile");
         results.description = profileNode ? profileNode.textContent.trim() : "";

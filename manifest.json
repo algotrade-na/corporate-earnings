@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "Corporate Earnings",
-    "version": "3.3.10",
+    "version": "3.4.0",
     "description": "Displays earnings and fundamentals in an easy-to-analyze format (MarketSmith Style)",
     "icons": {
         "128": "src/images/icon128.png"
@@ -39,6 +39,8 @@
         "https://*.seekingalpha.com/*",
         "https://*.yahoo.com/*",
         "https://query1.finance.yahoo.com/*",
-        "https://query2.finance.yahoo.com/*"
+        "https://query2.finance.yahoo.com/*",
+        "https://*.tradingview.com/*",
+        "https://*.tradingview-widget.com/*"
     ]
 }
