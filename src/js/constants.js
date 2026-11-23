@@ -109,21 +109,21 @@ const CSS = (showChart = false, show_earnings_surprise = false) => `
         --ratings-downgrade-color: #f43f5e;
         
         width: 100%;
-        max-width: 100%;
+        max-width: 1180px;
         box-sizing: border-box;
-        margin: 0 0 16px 0;
+        margin: 0 auto 16px auto;
         border: var(--border);
         border-radius: 10px;
         color: var(--text-color);
         background: var(--bkg-color);
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-        padding: 16px;
+        padding: 14px;
         box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
         font-size: 13px;
         line-height: 1.4;
         display: flex;
         flex-direction: column;
-        gap: 16px;
+        gap: 12px;
     }
     #ht-root-container.ht-dark-theme {
         --text-color: #f1f5f9;
@@ -234,13 +234,15 @@ const CSS = (showChart = false, show_earnings_surprise = false) => `
     }
     #ht-fundamentals-grid {
         width: 100%;
+        max-width: 860px;
+        margin: 0 auto;
         table-layout: fixed;
         border-collapse: collapse;
         border-spacing: 0;
         font-size: 12px;
     }
     #ht-fundamentals-grid td {
-        padding: 5px 8px;
+        padding: 4px 8px;
         border-bottom: var(--border-subtle);
         vertical-align: middle;
     }
@@ -262,10 +264,10 @@ const CSS = (showChart = false, show_earnings_surprise = false) => `
     }
     #ht-fundamentals-grid td:nth-child(2) {
         border-right: var(--border);
-        padding-right: 20px;
+        padding-right: 16px;
     }
     #ht-fundamentals-grid td:nth-child(3) {
-        padding-left: 20px;
+        padding-left: 16px;
     }
     #ht-fundamentals-earnings.learnings,
     #ht-fundamentals-adr.ladr,
@@ -282,7 +284,7 @@ const CSS = (showChart = false, show_earnings_surprise = false) => `
     #ht-ec-container {
         display: flex;
         flex-direction: row;
-        gap: 16px;
+        gap: 12px;
         align-items: stretch;
         width: 100%;
         margin: 0;
@@ -290,7 +292,7 @@ const CSS = (showChart = false, show_earnings_surprise = false) => `
     #ht-earnings-container {
         display: flex;
         flex-direction: row;
-        gap: 16px;
+        gap: 12px;
         align-items: stretch;
         flex: 1 1 0;
         width: 100%;
@@ -336,7 +338,7 @@ const CSS = (showChart = false, show_earnings_surprise = false) => `
         border-radius: 8px;
         overflow: hidden;
         background: var(--card-bkg);
-        font-size: 12px;
+        font-size: 11.5px;
         width: 100%;
         box-shadow: 0 2px 8px rgba(0,0,0,0.15);
     }
@@ -347,14 +349,14 @@ const CSS = (showChart = false, show_earnings_surprise = false) => `
         font-size: 11px;
         text-transform: uppercase;
         letter-spacing: 0.5px;
-        padding: 8px 8px;
+        padding: 6px 6px;
         border-bottom: var(--border);
         text-align: right;
         white-space: nowrap;
     }
     .ht-earnings-table thead tr td:first-child {
         text-align: left;
-        padding-left: 12px;
+        padding-left: 8px;
     }
     .ht-earnings-table tbody tr {
         border-bottom: var(--border-subtle);
@@ -370,19 +372,20 @@ const CSS = (showChart = false, show_earnings_surprise = false) => `
         background-color: var(--card-bkg-alt);
     }
     .ht-earnings-table tbody tr td {
-        padding: 6px 8px;
+        padding: 4px 6px;
         text-align: right;
         color: var(--text-color);
         font-variant-numeric: tabular-nums;
         border-bottom: var(--border-subtle);
         white-space: nowrap;
+        font-size: 11.5px;
     }
     .ht-earnings-table tbody tr:last-child td {
         border-bottom: none;
     }
     .ht-earnings-table tbody tr td:first-child {
         text-align: left;
-        padding-left: 12px;
+        padding-left: 8px;
         font-weight: 500;
         color: var(--text-muted);
     }
@@ -632,10 +635,10 @@ const HTML = (theme = "dark", showChart = false, show_earnings_surprise = false,
         <div id="ht-description"></div>
         <table id="ht-fundamentals-grid">
             <colgroup>
-                <col style="width: 18%;">
-                <col style="width: 32%;">
-                <col style="width: 18%;">
-                <col style="width: 32%;">
+                <col style="width: 22%;">
+                <col style="width: 28%;">
+                <col style="width: 22%;">
+                <col style="width: 28%;">
             </colgroup>
             <tbody>
                 <tr class="ht-fdata">
